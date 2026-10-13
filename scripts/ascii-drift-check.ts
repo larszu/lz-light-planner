@@ -23,6 +23,11 @@
 //     nachgeschlagen; ein Umlaut darin bringt die Klammer in den Dialog.
 //   * DIE ALIAS-LISTE in `consolePatch` — sie NIMMT „geraetetyp" von fremden
 //     Pult-Exporten ENTGEGEN. Wer sie „korrigiert", verliert die Spalte.
+//   * KOPIEN DER SUITE-PAKETE unter `src/avplan/` (ADR-015). Sie sind Code
+//     einer anderen Quelle und duerfen hier nicht geaendert werden (das
+//     prueft `kopien:check`); ihre Literale sind Shader-Quelltext,
+//     Objektnamen und interne Fehlermeldungen, keine Oberflaeche. Seit
+//     2026-10-13 steht dort `@avplan/scene3d` mit GLSL in Template-Strings.
 //   * DATEINAMEN von Ausgaben (`geraeteliste.csv`, `geraeteliste.pdf`,
 //     `rueckweg-pult.csv`). Ein Umlaut im Dateinamen laeuft ueber drei
 //     Betriebssysteme unterschiedlich; sie sind Kennungen, keine Anzeige.
@@ -101,7 +106,7 @@ const istHex = (wort: string) => /^[0-9a-f]+$/i.test(wort);
 
 const befunde: string[] = [];
 let literale = 0;
-for (const datei of alleDateien(SRC)) {
+for (const datei of alleDateien(SRC).filter((d) => !/[\\/]avplan[\\/]/.test(d))) {
   const src = readFileSync(datei, 'utf8');
   const kurz = relative(SRC, datei);
   const kind = kurz.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;

@@ -5,8 +5,8 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { erzeugeDunstStrahl, ladePersonModell, tiefsterPunkt, wendeSitzposeAn } from '../avplan/scene3d';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { PlacedFixture, Person, StageElement, Truss, Wall, Ceiling, FloorPlan, Layers, CameraView, FloorMaterial } from '../types';
 import { computeHeatMap, surfaceLux, luxToColor, luxToColorTarget, effectiveFieldAngleDeg, peakCandela } from '../core/lightCalc';
@@ -53,189 +53,16 @@ function applyBackdrop(dome: THREE.Mesh, scene: THREE.Scene, b: Backdrop) {
   scene.background = new THREE.Color(b.horizon);
 }
 
-// ── Volumetric haze-beam shader (photo view, raymarched) ─────────────────────
-// A real beam in haze is light scattered through the beam *volume*, so the eye
-// integrates a bright core with soft edges. We render the bounding cone's near
-// wall and raymarch the view ray forward through the cone, integrating the beam's
-// own Gaussian radial profile (10 % at the field angle — the σ the heat-map uses)
-// with a ~1/d² scatter that's denser near the lamp. A per-pixel jitter hides the
-// step count. Density is driven entirely by the haze slider (haze 0 ⇒ nothing).
-const BEAM_VERT = /* glsl */`
-  varying vec3 vWorldPos;
-  void main() {
-    vec4 wp = modelMatrix * vec4(position, 1.0);
-    vWorldPos = wp.xyz;
-    gl_Position = projectionMatrix * viewMatrix * wp;
-  }`;
-const BEAM_FRAG = /* glsl */`
-  precision highp float;
-  varying vec3 vWorldPos;
-  uniform vec3 uApex;     // lamp position (world)
-  uniform vec3 uDir;      // unit axis apex→aim (world)
-  uniform float uHeight;  // apex→floor distance
-  uniform float uSigma;   // Gaussian σ (rad), anchored on the field angle
-  uniform vec3 uColor; uniform float uHaze; uniform float uIntensity; uniform float uTipFade; uniform float uGain;
-  uniform float uHG;      // Henyey–Greenstein asymmetry (forward scatter, 0..~0.9)
-  uniform float uExtinct; // haze extinction coefficient per metre (per unit haze)
-  float hash(vec2 p) { return fract(sin(dot(p, vec2(41.31, 289.07))) * 43758.5453); }
-  void main() {
-    vec3 ro = cameraPosition;
-    vec3 rd = normalize(vWorldPos - ro);
-    float far = length(vWorldPos - ro);       // far wall (BackSide) — always present
-    const int STEPS = 24;
-    float step = uHeight / float(STEPS);
-    float jitter = hash(gl_FragCoord.xy) * step;
-    float k = uHG, kk = uHG * uHG;
-    float sigT = uExtinct * uHaze;            // extinction per metre
-    // Single-scattering integral along the view ray, marching from the cone's far
-    // wall back toward the camera (so the shaft is visible from any orbit/inside):
-    //   L = ∫ phase(α)·E(P)·T_light·T_view ds,  E = I(θ)/d² (true inverse-square).
-    float acc = 0.0;
-    for (int i = 0; i < STEPS; i++) {
-      float s = far - jitter - float(i) * step; // distance from camera; march toward it
-      if (s <= 0.0) break;                       // don't sample behind the camera
-      vec3 P = ro + rd * s;
-      vec3 toP = P - uApex;
-      float axial = dot(toP, uDir);
-      if (axial < 0.0 || axial > uHeight) continue;
-      float d2 = dot(toP, toP);                  // |lamp→P|²
-      float d = sqrt(d2);
-      float radial = sqrt(max(0.0, d2 - axial * axial));
-      float theta = atan(radial / max(axial, 1e-3));
-      float Iprof = exp(-(theta * theta) / (2.0 * uSigma * uSigma));   // beam intensity I(θ)
-      float E = Iprof / max(d2, 0.09);            // irradiance (1/d², clamped at the lens)
-      float cosA = dot(toP / d, -rd);             // light propagation · view-to-camera
-      float phase = (1.0 - kk) / pow(max(1e-4, 1.0 + kk - 2.0 * k * cosA), 1.5); // Henyey–Greenstein
-      float trans = exp(-sigT * (d + s));         // Beer–Lambert: light path + view path
-      float tip = smoothstep(0.0, uTipFade * uHeight, axial);
-      acc += E * phase * trans * tip;
-    }
-    // Accumulated optical depth → medium opacity (1 − e^−τ).
-    float tau = acc * step * uHaze * uIntensity * uGain;
-    float a = (1.0 - exp(-tau)) * 0.9;
-    if (a < 0.003) discard;
-    gl_FragColor = vec4(uColor, a);
-  }`;
-
-// Bend the standard (Mixamo/RPM) skeleton into a seated pose: thighs forward,
-// knees bent, slight forward lean + arms resting. Tuned for the bundled avatar.
-function applySitPose(root: THREE.Object3D) {
-  const rot = (name: string, x: number, y = 0, z = 0) => {
-    const b = root.getObjectByName(name);
-    if (b) { b.rotation.x += x; b.rotation.y += y; b.rotation.z += z; }
-  };
-  // Anatomically: hips flex the thighs forward (toward where the chest/face
-  // point) and the knees drop the shins straight down — both on this rig need a
-  // negative X (a positive X sat the figure on backwards, legs trailing behind).
-  // Feet flat, gentle lean, hands resting. Verified in the pose harness.
-  rot('LeftUpLeg', -1.45, 0, 0.12);
-  rot('RightUpLeg', -1.45, 0, -0.12);
-  rot('LeftLeg', -1.55);
-  rot('RightLeg', -1.55);
-  rot('LeftFoot', 0.2);
-  rot('RightFoot', 0.2);
-  rot('Spine', 0.06);
-  rot('Spine1', 0.04);
-  rot('LeftArm', 0.45, 0, 0.1);
-  rot('RightArm', 0.45, 0, -0.1);
-}
-
-// Lowest skinned-vertex world Y for a posed model — used to rest the figure on
-// the floor/podium exactly (the bind-pose bounding box is wrong once posed).
-function posedMinWorldY(root: THREE.Object3D): number {
-  root.updateMatrixWorld(true);
-  let min = Infinity; const v = new THREE.Vector3();
-  root.traverse((o) => {
-    const sm = o as THREE.SkinnedMesh;
-    if (!(sm as unknown as THREE.Mesh).isMesh) return;
-    if ((sm as unknown as { isSkinnedMesh?: boolean }).isSkinnedMesh && sm.skeleton) sm.skeleton.update();
-    const pos = sm.geometry.getAttribute('position');
-    for (let i = 0; i < pos.count; i++) { sm.getVertexPosition(i, v); v.applyMatrix4(sm.matrixWorld); if (v.y < min) min = v.y; }
-  });
-  return min === Infinity ? 0 : min;
-}
-
-// A real (textured) human model, loaded once and reused for the photo view so
-// people cast and receive real shadows. Falls back to the simple cylinder when
-// it isn't loaded (or in the non-photo view).
+// Personen-Modell und Sitzpose kommen aus @avplan/scene3d (ADR-015); dort
+// stehen auch die Gruende (XHR fuer file://, Texturlader fuer Electron,
+// Ruhepose statt T-Pose, kein eingebackenes Leuchten).
 interface PersonModel { scene: THREE.Group; height: number; minY: number }
-let personModelPromise: Promise<PersonModel> | null = null;
-
-// Load the model bytes via XHR rather than three's fetch-based FileLoader:
-// fetch() can't read file:// URLs, so the packaged Electron app (which serves
-// the UI from file://) would otherwise fail to load the GLB and fall back to
-// the stand-in figure. XHR handles both http(s) and file:// (status 0 = ok).
-function fetchArrayBuffer(url: string): Promise<ArrayBuffer> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('GET', url, true);
-    xhr.responseType = 'arraybuffer';
-    xhr.onload = () => (xhr.status === 0 || (xhr.status >= 200 && xhr.status < 300))
-      ? resolve(xhr.response as ArrayBuffer)
-      : reject(new Error(`HTTP ${xhr.status} for ${url}`));
-    xhr.onerror = () => reject(new Error(`network error for ${url}`));
-    xhr.send();
-  });
-}
 
 function loadPersonModel(): Promise<PersonModel> {
-  if (!personModelPromise) {
-    const url = `${import.meta.env.BASE_URL}models/person.glb`;
-    const loader = new GLTFLoader();
-    // GLTFLoader decodes embedded texture blobs via ImageBitmapLoader
-    // (createImageBitmap) by default. Under Electron's file:// origin that path
-    // fails on blob: URLs ("Couldn't load texture blob"), leaving every material
-    // white. The texture loader lives on the parser (created per-parse), so we
-    // register a plugin that swaps in a plain TextureLoader — its <img>-element
-    // decode path works in both the browser and the packaged Electron app.
-    loader.register((parser) => {
-      const tl = new THREE.TextureLoader(parser.options.manager);
-      tl.setCrossOrigin(parser.options.crossOrigin);
-      tl.setRequestHeader(parser.options.requestHeader);
-      parser.textureLoader = tl;
-      return { name: 'LP_compatible_texture_loader' };
-    });
-    personModelPromise = fetchArrayBuffer(url)
-      .then((buf) => loader.parseAsync(buf, ''))
-      .then((g) => {
-      const scene = g.scene;
-      // The bind pose is a T-pose; sample the idle clip so the figure stands
-      // naturally (arms down). One mixer.update bakes the pose into the bones,
-      // which the per-person clones then capture.
-      const idle = g.animations.find((a) => /idle|stand|rest/i.test(a.name)) ?? g.animations[0];
-      if (idle) {
-        const mixer = new THREE.AnimationMixer(scene);
-        mixer.clipAction(idle).play();
-        mixer.update(0.4);
-      }
-      // Tame the avatar's materials so it reads as a real, lit person rather
-      // than a glowing mask: kill any baked emissive (the cause of the "creepy"
-      // self-lit face under bloom) and let it pick up the environment (IBL) so
-      // skin/clothing show real colour instead of a black silhouette.
-      scene.traverse((o) => {
-        const mesh = o as THREE.Mesh;
-        if (!mesh.isMesh) return;
-        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-        mats.forEach((mm) => {
-          const m = mm as THREE.MeshStandardMaterial;
-          if (m.emissive) { m.emissive.setRGB(0, 0, 0); m.emissiveIntensity = 0; }
-          if ('envMapIntensity' in m) m.envMapIntensity = 1.15;
-          m.toneMapped = true;
-          m.needsUpdate = true;
-        });
-      });
-      // Strip the bundled avatar's novelty "Reindeer Glasses" accessory — a
-      // single mesh that carries the glasses, the red nose and the antlers.
-      // Removed before measuring height so the antlers don't inflate it.
-      const accessories: THREE.Object3D[] = [];
-      scene.traverse((o) => { if (/glasses/i.test(o.name)) accessories.push(o); });
-      accessories.forEach((o) => o.parent?.remove(o));
-      scene.updateMatrixWorld(true);
-      const box = new THREE.Box3().setFromObject(scene);
-      return { scene, height: Math.max(0.1, box.max.y - box.min.y), minY: box.min.y };
-    });
-  }
-  return personModelPromise;
+  // Die mitgelieferte Figur traegt ein Scherz-Accessoire (Rentier-Brille mit
+  // Nase und Geweih) in einem einzigen Mesh — vor dem Messen der Hoehe weg.
+  return ladePersonModell(`${import.meta.env.BASE_URL}models/person.glb`, { entfernen: /glasses/i, umgebung: 1.15 })
+    .then((m) => ({ scene: m.szene, height: m.hoehe, minY: m.minY }));
 }
 
 export interface Scene3DHandle {
@@ -1265,9 +1092,9 @@ const Scene3D = forwardRef<Scene3DHandle, Props>(({ fixtures, persons, stageElem
         const sitting = p.pose === 'sitting';
         m.position.set(p.x, floorH - personModel.minY * s, p.y); // standing: feet on the surface
         if (sitting) {
-          applySitPose(m);
+          wendeSitzposeAn(m);
           // Re-ground on the seated silhouette (bind-pose minY no longer applies).
-          m.position.y += floorH - posedMinWorldY(m);
+          m.position.y += floorH - tiefsterPunkt(m);
         }
         const highlight = (mm: THREE.Material) => {
           const c = (mm as THREE.MeshStandardMaterial).clone();
@@ -1382,39 +1209,20 @@ const Scene3D = forwardRef<Scene3DHandle, Props>(({ fixtures, persons, stageElem
         const beamColor = isSel ? new THREE.Color('#ffcc33') : new THREE.Color(getBeamColorHex(f));
 
         if (photoMode) {
-          // True volumetric shaft, raymarched in BEAM_FRAG. The bounding cone is
-          // a touch wider than the field angle so the Gaussian tail fades out
-          // *inside* it (no hard rim); closed + FrontSide so the near wall always
-          // gives the march a start point.
-          const fieldHalfRad = (fieldAngle / 2) * (Math.PI / 180);
-          const halfA = Math.min(Math.PI / 2.1, fieldHalfRad * 1.45);
-          const geo = new THREE.ConeGeometry(Math.tan(halfA) * coneHeight, coneHeight, 40, 1, false);
-          geo.translate(0, -coneHeight / 2, 0);
-          const cone = new THREE.Mesh(geo, new THREE.ShaderMaterial({
-            uniforms: {
-              uApex: { value: fixturePos.clone() },
-              uDir: { value: coneDirNorm.clone() },
-              uHeight: { value: coneHeight },
-              uSigma: { value: fieldHalfRad / Math.sqrt(2 * Math.LN10) },
-              uColor: { value: beamColor },
-              uHaze: { value: haze },
-              uIntensity: { value: Math.max(0.12, f.dimming / 100) }, // beam density tracks the dimmer
-              uTipFade: { value: 0.05 },
-              uGain: { value: 32.0 },
-              uHG: { value: 0.6 },     // forward-scattering haze (Mie-like)
-              uExtinct: { value: 0.03 },
-            },
-            vertexShader: BEAM_VERT,
-            fragmentShader: BEAM_FRAG,
-            transparent: true,
-            depthWrite: false,
-            side: THREE.BackSide,
-            blending: THREE.AdditiveBlending,
+          // Raymarching-Kegel aus @avplan/scene3d. Dichte wie bisher aus dem
+          // Dimmer (die Photometrie rechnet der Planer selbst), harter
+          // Abschluss am Boden, Vorwaertsstreuung 0,6.
+          group.add(erzeugeDunstStrahl({
+            von: fixturePos,
+            nach: aimPos,
+            feldwinkelDeg: fieldAngle,
+            farbe: beamColor,
+            dunst: haze,
+            lichtstaerke: Math.max(0.12, f.dimming / 100),
+            endeWeich: false,
+            vorwaerts: 0.6,
+            schritte: 24,
           }));
-          cone.userData = { noPick: true };
-          cone.position.copy(fixturePos);
-          cone.setRotationFromQuaternion(quat);
-          group.add(cone);
         } else {
           // Technical 3D: a faint solid cone as a beam-coverage indicator.
           const geo = new THREE.ConeGeometry(beamRadAtBase, coneHeight, 24, 1, true);
