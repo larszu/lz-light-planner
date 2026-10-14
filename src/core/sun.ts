@@ -1,77 +1,15 @@
-// ───────────────────────────────────────────────────────────────────────────
-// Sun position & direction for the "global sun" feature (issue #28).
+// Global sun (issue #28): project settings → sun position and real illuminance.
 //
-// Given a location (lat/lon), a date and a clock time, plus where North points
-// on the plan, this resolves the sun into:
-//   • altitude / azimuth (the real solar position), and
-//   • a direction vector in plan space and in the 3D scene, so the renderer can
-//     place a directional "sun" light and the heat-map can cast it through the
-//     room's windows.
-//
-// The solar-position maths is the standard NOAA approximation. Time is taken as
-// local clock time; the timezone is approximated from the longitude
-// (round(lon / 15)), which is accurate enough for planning where the sun sits
-// and how it falls through a window — not for astronomy.
-// ───────────────────────────────────────────────────────────────────────────
-import type { SunSettings } from '../types';
+// Solar position, daylight levels and weather come from @avplan/scene3d
+// (`sonnenstand`, `sonneDirektLux`, `himmelDiffusLux`, `WETTER`) — the same
+// source the render sky uses, so plan heat-map and render never disagree.
+// The plan convention (`northDeg` clockwise from plan "up", plan y = scene z)
+// is identical to the package's.
+import { ORTE, sonnenstand, sonnenzeiten, type OrtArt, type Sonnenzeiten } from '../avplan/scene3d/sonne';
+import { WETTER, farbtemperaturK, himmelDiffusLux, sonneDirektLux, type WetterArt } from '../avplan/scene3d/himmel';
+import type { SunPlace, SunSettings } from '../types';
 
-const DEG = Math.PI / 180;
-
-export interface SolarPosition {
-  altitudeDeg: number; // degrees above the horizon (negative = below)
-  azimuthDeg: number;  // compass bearing, 0 = North, 90 = East, clockwise
-}
-
-// Day of year (1..366) for a YYYY-MM-DD string.
-function dayOfYear(year: number, month: number, day: number): number {
-  const start = Date.UTC(year, 0, 0);
-  const here = Date.UTC(year, month - 1, day);
-  return Math.floor((here - start) / 86400000);
-}
-
-/**
- * Solar altitude & azimuth (NOAA approximation). `date` is 'YYYY-MM-DD', `time`
- * is 'HH:MM' interpreted as local clock time at `lon`.
- */
-export function solarPosition(latDeg: number, lonDeg: number, date: string, time: string): SolarPosition {
-  const [y, mo, d] = date.split('-').map(Number);
-  const [hh, mm] = time.split(':').map(Number);
-  if (!y || !mo || !d || Number.isNaN(hh) || Number.isNaN(mm)) return { altitudeDeg: 0, azimuthDeg: 180 };
-
-  const n = dayOfYear(y, mo, d);
-  const tzHours = Math.round(lonDeg / 15); // approximate local timezone from longitude
-  const hours = hh + mm / 60;
-
-  // Fractional year (radians).
-  const gamma = (2 * Math.PI / 365) * (n - 1 + (hours - 12) / 24);
-  // Equation of time (minutes) and solar declination (radians).
-  const eqTime = 229.18 * (0.000075 + 0.001868 * Math.cos(gamma) - 0.032077 * Math.sin(gamma)
-    - 0.014615 * Math.cos(2 * gamma) - 0.040849 * Math.sin(2 * gamma));
-  const decl = 0.006918 - 0.399912 * Math.cos(gamma) + 0.070257 * Math.sin(gamma)
-    - 0.006758 * Math.cos(2 * gamma) + 0.000907 * Math.sin(2 * gamma)
-    - 0.002697 * Math.cos(3 * gamma) + 0.00148 * Math.sin(3 * gamma);
-
-  // True solar time (minutes), then hour angle (degrees).
-  const timeOffset = eqTime + 4 * lonDeg - 60 * tzHours;
-  const tst = hours * 60 + timeOffset;
-  const ha = (tst / 4) - 180; // degrees
-
-  const lat = latDeg * DEG;
-  const haR = ha * DEG;
-  const cosZenith = Math.sin(lat) * Math.sin(decl) + Math.cos(lat) * Math.cos(decl) * Math.cos(haR);
-  const zenith = Math.acos(Math.max(-1, Math.min(1, cosZenith)));
-  const altitude = Math.PI / 2 - zenith;
-
-  // Azimuth measured clockwise from North.
-  let azimuth = Math.atan2(
-    Math.sin(haR),
-    Math.cos(haR) * Math.sin(lat) - Math.tan(decl) * Math.cos(lat),
-  ); // this is the bearing from South, CCW
-  azimuth = (azimuth / DEG + 180) % 360; // convert to 0=N, CW
-  if (azimuth < 0) azimuth += 360;
-
-  return { altitudeDeg: altitude / DEG, azimuthDeg: azimuth };
-}
+export { ORTE, WETTER, type OrtArt, type WetterArt };
 
 export interface ResolvedSun {
   altitude: number;          // radians above the horizon (> 0 when up)
@@ -80,62 +18,127 @@ export interface ResolvedSun {
   dir: { x: number; y: number };
   /** Unit vector in 3D scene space pointing from the ground toward the sun. */
   dir3D: { x: number; y: number; z: number };
-  /** Horizontal illuminance (lux) at an unobstructed floor point. */
+  /** Horizontal illuminance (lux) of the direct sun at an unobstructed floor point. */
   lux: number;
-  /** Light colour, warmer near the horizon. */
-  color: string;
+  /** Horizontal illuminance (lux) of the open sky (diffuse). */
+  skyLux: number;
+  /** Direct-normal illuminance (lux), weather included. */
+  directNormalLux: number;
+  colorTempK: number;
   altitudeDeg: number;
 }
 
-// Warm the sun toward the horizon (sunrise/sunset) and keep it white high up.
-function sunColor(altitudeDeg: number): string {
-  const t = Math.max(0, Math.min(1, altitudeDeg / 25)); // 0 at horizon → 1 at 25°+
-  const r = 255;
-  const g = Math.round(150 + 95 * t);
-  const b = Math.round(70 + 175 * t);
-  return `rgb(${r}, ${g}, ${b})`;
+const DEG = Math.PI / 180;
+
+/** Places in ORTE are all in Germany; custom coordinates fall back to round(lon / 15). */
+function timeZoneOf(s: SunSettings): string | null {
+  return placeOf(s) === 'custom' ? null : 'Europe/Berlin';
+}
+
+export function placeOf(s: Pick<SunSettings, 'place' | 'latitude' | 'longitude'>): SunPlace {
+  if (s.place) return s.place;
+  const hit = (Object.keys(ORTE) as OrtArt[]).find((k) => Math.abs(ORTE[k].lat - s.latitude) < 0.01 && Math.abs(ORTE[k].lon - s.longitude) < 0.01);
+  return hit ?? 'custom';
+}
+
+function offsetMinutes(zone: string | null, lon: number, utcMs: number): number {
+  if (!zone) return Math.round(lon / 15) * 60;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric',
+  }).formatToParts(new Date(utcMs));
+  const n = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  return Math.round((Date.UTC(n('year'), n('month') - 1, n('day'), n('hour'), n('minute')) - Math.floor(utcMs / 60000) * 60000) / 60000);
+}
+
+/** Local clock time at the project's place → real instant. */
+export function sunInstant(s: SunSettings, minutesOfDay?: number): Date | null {
+  const [y, mo, d] = s.date.split('-').map(Number);
+  const [hh, mm] = s.time.split(':').map(Number);
+  if (!y || !mo || !d || Number.isNaN(hh) || Number.isNaN(mm)) return null;
+  const zone = timeZoneOf(s);
+  const local = Date.UTC(y, mo - 1, d) + (minutesOfDay ?? hh * 60 + mm) * 60000;
+  let t = local - offsetMinutes(zone, s.longitude, local) * 60000;
+  // Second pass settles the hour around a DST switch.
+  t = local - offsetMinutes(zone, s.longitude, t) * 60000;
+  return new Date(t);
+}
+
+/** Real instant → minutes since local midnight at the project's place. */
+export function localMinutes(s: SunSettings, at: Date): number {
+  const m = Math.floor(at.getTime() / 60000) + offsetMinutes(timeZoneOf(s), s.longitude, at.getTime());
+  return ((m % 1440) + 1440) % 1440;
+}
+
+export function minutesToTime(m: number): string {
+  const r = ((Math.round(m) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(r / 60)).padStart(2, '0')}:${String(r % 60).padStart(2, '0')}`;
+}
+
+export function sunTimes(s: SunSettings): Sonnenzeiten | null {
+  const noon = sunInstant(s, 12 * 60);
+  return noon ? sonnenzeiten(noon, s.latitude, s.longitude) : null;
 }
 
 /**
- * Resolve sun settings into render/heat-map inputs. Returns null when the sun is
- * disabled or below the horizon (nothing to add).
+ * Sun position and real illuminance for the heat-map and the render. Null when
+ * the sun is disabled or below the horizon (no direct light to add).
  */
 export function resolveSun(s: SunSettings | undefined): ResolvedSun | null {
   if (!s || !s.enabled) return null;
-  const pos = solarPosition(s.latitude, s.longitude, s.date, s.time);
-  if (pos.altitudeDeg <= 0.5) return null; // below / at the horizon
-
-  const altitude = pos.altitudeDeg * DEG;
-  // Screen bearing (clockwise from plan "up" = -Y): rotate the compass bearing
-  // by the user's North offset. Plan Y increases downward, so "up" is -Y.
-  const beta = (s.northDeg + pos.azimuthDeg) * DEG;
-  const dir = { x: Math.sin(beta), y: -Math.cos(beta) };
-  const cosA = Math.cos(altitude), sinA = Math.sin(altitude);
-  const dir3D = { x: dir.x * cosA, y: sinA, z: dir.y * cosA };
-
-  // Horizontal illuminance ≈ direct-normal intensity × sin(altitude).
-  const lux = s.intensity * sinA;
-
+  const at = sunInstant(s);
+  if (!at) return null;
+  const pos = sonnenstand(at, s.latitude, s.longitude, s.northDeg);
+  if (pos.elevationDeg <= 0.5) return null;
+  const w = WETTER[s.weather ?? 'klar'];
+  const altitude = pos.elevationDeg * DEG;
+  const h = Math.hypot(pos.richtung.x, pos.richtung.z) || 1;
+  const directNormalLux = sonneDirektLux(pos.elevationDeg) * w.direkt;
   return {
     altitude,
-    azimuthDeg: pos.azimuthDeg,
-    dir,
-    dir3D,
-    lux,
-    color: sunColor(pos.altitudeDeg),
-    altitudeDeg: pos.altitudeDeg,
+    azimuthDeg: pos.azimutDeg,
+    dir: { x: pos.richtung.x / h, y: pos.richtung.z / h },
+    dir3D: { x: pos.richtung.x, y: pos.richtung.y, z: pos.richtung.z },
+    lux: directNormalLux * Math.sin(altitude),
+    skyLux: himmelDiffusLux(pos.elevationDeg) * w.diffus,
+    directNormalLux,
+    colorTempK: farbtemperaturK(pos.elevationDeg),
+    altitudeDeg: pos.elevationDeg,
   };
 }
 
-// A sensible default: Berlin, summer afternoon, North up, bright clear sky.
+/**
+ * Old project files carried `intensity` (a hand-set direct-normal lux) and no
+ * place or weather. Daylight is computed now, so `intensity` is dropped; the
+ * place is recognised from the coordinates.
+ */
+export function normalizeSun(raw: unknown): SunSettings {
+  const d = defaultSunSettings();
+  if (!raw || typeof raw !== 'object') return d;
+  const r = raw as Partial<SunSettings> & { intensity?: unknown };
+  const num = (v: unknown, f: number) => (typeof v === 'number' && Number.isFinite(v) ? v : f);
+  const base: SunSettings = {
+    enabled: typeof r.enabled === 'boolean' ? r.enabled : d.enabled,
+    latitude: num(r.latitude, d.latitude),
+    longitude: num(r.longitude, d.longitude),
+    date: typeof r.date === 'string' ? r.date : d.date,
+    time: typeof r.time === 'string' ? r.time : d.time,
+    northDeg: num(r.northDeg, d.northDeg),
+    weather: r.weather && r.weather in WETTER ? r.weather : 'klar',
+  };
+  const place = r.place === 'custom' || (r.place && r.place in ORTE) ? r.place : undefined;
+  return { ...base, place: placeOf({ ...base, place }) };
+}
+
+// A sensible default: Berlin, summer afternoon, North up, clear sky.
 export function defaultSunSettings(): SunSettings {
   return {
     enabled: false,
-    latitude: 52.52,
-    longitude: 13.405,
+    latitude: ORTE.berlin.lat,
+    longitude: ORTE.berlin.lon,
+    place: 'berlin',
     date: '2026-06-21',
     time: '15:00',
     northDeg: 0,
-    intensity: 40000,
+    weather: 'klar',
   };
 }

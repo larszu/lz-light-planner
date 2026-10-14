@@ -2,7 +2,8 @@ import React from 'react';
 import Icon from './Icon';
 import type { FloorMaterial, FloorPresetId, SunSettings } from '../types';
 import { BACKDROPS, FLOOR_PRESETS, type BackdropId } from '../core/surfaceTextures';
-import { format, useTranslation } from '../i18n';
+import { useTranslation } from '../i18n';
+import SunSection from './SunSection';
 
 // Die Anzeige- und Render-Einstellungen rechts in der Kopfzeile.
 //
@@ -41,6 +42,8 @@ interface Props {
   onHazeChange: (v: number) => void;
   onToggleBeams: () => void;
   onBackdropChange: (b: BackdropId) => void;
+  personScan: boolean;
+  onTogglePersonScan: () => void;
   onFloorChange: (f: FloorMaterial) => void;
   onSunChange: (s: SunSettings) => void;
   onResetRender: () => void;
@@ -83,6 +86,7 @@ const ViewPanel: React.FC<Props> = (p) => {
     blackbox: t('vp.bg.blackbox', 'Black box'),
     studio: t('vp.bg.studio', 'Studio'),
     daylight: t('vp.bg.daylight', 'Daylight'),
+    sky: t('vp.bg.sky', 'Sky'),
   }[id]);
 
   return (
@@ -121,7 +125,10 @@ const ViewPanel: React.FC<Props> = (p) => {
         <div className="vp-label">{t('vp.background', 'Background')}</div>
         <div className="vp-swatches">
           {BACKDROPS.map((b) => (
-            <button key={b.id} type="button" className={`vp-sw ${p.backdrop === b.id ? 'on' : ''}`} aria-pressed={p.backdrop === b.id} onClick={() => p.onBackdropChange(b.id)}>
+            <button key={b.id} type="button" className={`vp-sw ${p.backdrop === b.id ? 'on' : ''}`} aria-pressed={p.backdrop === b.id} onClick={() => {
+              p.onBackdropChange(b.id);
+              if (b.id === 'sky' && !p.sun.enabled) p.onSunChange({ ...p.sun, enabled: true });
+            }}>
               <i style={{ background: `linear-gradient(${b.top}, ${b.horizon} 70%, ${b.bottom})` }} />
               <span>{backdropLabel(b.id)}</span>
             </button>
@@ -148,32 +155,16 @@ const ViewPanel: React.FC<Props> = (p) => {
         <Slider label={t('top.ambience', 'Ambience')} value={p.ambience} min={0} max={1.5} step={0.05} def={0.55} shown={`${Math.round(p.ambience * 100)}%`} onChange={p.onAmbienceChange} resetHint={resetHint} />
         <Slider label={t('top.haze', 'Haze')} value={p.haze} min={0} max={1} step={0.02} def={0.15} shown={`${Math.round(p.haze * 100)}%`} onChange={p.onHazeChange} resetHint={resetHint} />
         <Toggle on={p.showBeams} icon="beam" label={t('vp.beams', 'Light beams in haze')} onClick={p.onToggleBeams} />
+        <Toggle on={p.personScan} icon="person" label={t('vp.personScan', 'Scanned person model')}
+          hint={t('vp.personScanHint', 'Render people from the photo-scanned model instead of the built figures with pose and clothing.')}
+          onClick={p.onTogglePersonScan} />
       </section>
 
       <section className="vp-sec">
         <header className="vp-head"><span>{t('top.sun', 'Sun / daylight')}</span></header>
         <Toggle on={p.sun.enabled} icon="heatmap" label={t('top.sunOn', 'Sun active')} hint={t('top.sunHint', 'Real sun: daylight & shadows from location, date and time – falls through windows into the room.')}
           onClick={() => p.onSunChange({ ...p.sun, enabled: !p.sun.enabled })} />
-        {p.sun.enabled && (
-          <div className="vp-indent">
-            <label className="tb-slider"><span>{t('top.date', 'Date')}</span>
-              <input type="date" value={p.sun.date} onChange={(e) => p.onSunChange({ ...p.sun, date: e.target.value })} /><em /></label>
-            <label className="tb-slider"><span>{t('top.time', 'Time')}</span>
-              <input type="time" value={p.sun.time} onChange={(e) => p.onSunChange({ ...p.sun, time: e.target.value })} /><em /></label>
-            <label className="tb-slider"><span>{t('top.latitude', 'Latitude')}</span>
-              <input type="number" min={-90} max={90} step={0.5} value={p.sun.latitude} onChange={(e) => p.onSunChange({ ...p.sun, latitude: +e.target.value })} /><em>°</em></label>
-            <label className="tb-slider"><span>{t('top.longitude', 'Longitude')}</span>
-              <input type="number" min={-180} max={180} step={0.5} value={p.sun.longitude} onChange={(e) => p.onSunChange({ ...p.sun, longitude: +e.target.value })} /><em>°</em></label>
-            <label className="tb-slider"><span>{t('top.north', 'North ↻')}</span>
-              <input type="range" min={0} max={359} step={1} value={p.sun.northDeg} onChange={(e) => p.onSunChange({ ...p.sun, northDeg: +e.target.value })} /><em>{Math.round(p.sun.northDeg)}°</em></label>
-            <label className="tb-slider"><span>{t('top.intensity', 'Intensity')}</span>
-              <input type="number" min={0} max={120000} step={1000} value={p.sun.intensity} onChange={(e) => p.onSunChange({ ...p.sun, intensity: +e.target.value })} /><em>lx</em></label>
-            <div className="tb-hint">{p.sunInfo
-              ? format(t('top.sunPos', 'Sun position: {alt}° above the horizon · azimuth {az}° (0 = N). Falls through windows into the room.'),
-                { alt: p.sunInfo.altitudeDeg.toFixed(0), az: p.sunInfo.azimuthDeg.toFixed(0) })
-              : t('top.sunBelow', 'The sun is below the horizon – no direct daylight.')}</div>
-          </div>
-        )}
+        <SunSection sun={p.sun} sunInfo={p.sunInfo} skyBackdrop={p.backdrop === 'sky'} onSunChange={p.onSunChange} />
       </section>
     </div>
   );

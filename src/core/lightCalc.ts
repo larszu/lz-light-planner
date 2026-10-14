@@ -604,6 +604,7 @@ export interface SunInput {
   dir: { x: number; y: number }; // horizontal unit vector toward the sun (plan space)
   altitude: number;              // radians above the horizon (> 0)
   lux: number;                   // horizontal illuminance at an unobstructed point
+  skyLux?: number;               // diffuse open-sky illuminance (horizontal)
 }
 
 /**
@@ -613,6 +614,30 @@ export interface SunInput {
  */
 export function sunLuxAt(px: number, py: number, sun: SunInput, walls: Wall[]): number {
   if (sun.altitude <= 0 || sun.lux <= 0) return 0;
+  return sun.lux * sunTransmission(px, py, 0, sun, walls);
+}
+
+export interface SunSurfaceInput extends SunInput {
+  directNormalLux: number;
+  dir3D: { x: number; y: number; z: number }; // scene space: y up, z = plan y
+}
+
+/**
+ * Daylight on a surface at height `z` with normal (nx, ny, nz) in plan space —
+ * the sun's share of the illuminance at the subject (people, podiums, walls).
+ */
+export function sunSurfaceLux(
+  sun: SunSurfaceInput, walls: Wall[], ceilings: Ceiling[],
+  x: number, y: number, z: number, nx: number, ny: number, nz: number,
+): number {
+  if (sun.altitude <= 0) return 0;
+  const cosI = nx * sun.dir3D.x + ny * sun.dir3D.z + nz * sun.dir3D.y;
+  let E = cosI > 0 ? sun.directNormalLux * cosI * sunTransmission(x, y, z, sun, walls) : 0;
+  if (!walls.length && !ceilings.length && sun.skyLux) E += sun.skyLux * (1 + nz) / 2;
+  return E;
+}
+
+function sunTransmission(px: number, py: number, pz: number, sun: SunInput, walls: Wall[]): number {
   const tanA = Math.tan(sun.altitude);
   const dx = sun.dir.x, dy = sun.dir.y;
   let transmission = 1;
@@ -631,7 +656,7 @@ export function sunLuxAt(px: number, py: number, sun: SunInput, walls: Wall[]): 
       const s = (diffx * ey - diffy * ex) / denom;       // distance along the ray
       const u = (diffx * dy - diffy * dx) / denom;        // position along the segment 0..1
       if (s <= 1e-4 || u < 0 || u > 1) continue;
-      const hCross = s * tanA;                            // ray height where it meets the wall
+      const hCross = pz + s * tanA;                       // ray height where it meets the wall
       if (hCross >= w.height) continue;                   // ray clears the top of the wall
       // Is the crossing inside a window opening (then daylight passes through)?
       const run = seg.r0 + u * (seg.r1 - seg.r0);
@@ -640,7 +665,7 @@ export function sunLuxAt(px: number, py: number, sun: SunInput, walls: Wall[]): 
       else return 0;                                      // solid wall → full shadow
     }
   }
-  return sun.lux * transmission;
+  return transmission;
 }
 
 /**
@@ -669,13 +694,17 @@ export function computeHeatMap(
   // Pre-compute the reflecting surface patches once for the whole grid.
   const wallSamples = (walls.length || ceilings.length) ? precomputeSurfaceSamples(walls, ceilings, lit) : [];
   const sunActive = sun && sun.altitude > 0 && sun.lux > 0;
+  // Skylight only counts in the open: with walls or ceilings, how much sky a
+  // floor point sees depends on the room's view factor, which is not modelled —
+  // adding the full sky there would wash out every indoor plot.
+  const openSky = sun && !walls.length && !ceilings.length ? (sun.skyLux ?? 0) : 0;
 
   for (let yi = 0; yi < resY; yi++) {
     const py = originY + (yi + 0.5) * stepY;
     for (let xi = 0; xi < resX; xi++) {
       const px = originX + (xi + 0.5) * stepX;
       let lux = totalLux(lit, px, py, wallSamples);
-      if (sunActive) lux += sunLuxAt(px, py, sun!, walls);
+      if (sunActive) lux += sunLuxAt(px, py, sun!, walls) + openSky;
       data[yi * resX + xi] = lux;
       if (lux > maxLux) maxLux = lux;
     }

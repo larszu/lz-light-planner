@@ -283,7 +283,7 @@ export function surfaceCanvas<Id extends string>(preset: SurfacePreset<Id>, colo
 // nimmt die Horizontfarbe an, damit der Boden in den Hintergrund auslaeuft
 // statt an einer Kante zu enden. `fill` skaliert das Umgebungslicht: in der
 // Blackbox kommt Licht nur aus den Scheinwerfern, bei Tageslicht aus dem Himmel.
-export type BackdropId = 'venue' | 'blackbox' | 'studio' | 'daylight';
+export type BackdropId = 'venue' | 'blackbox' | 'studio' | 'daylight' | 'sky';
 
 export interface Backdrop {
   id: BackdropId;
@@ -301,6 +301,9 @@ export const BACKDROPS: readonly Backdrop[] = [
   { id: 'blackbox', label: 'Blackbox', top: '#000000', horizon: '#050506', bottom: '#000000', fill: 0.25, fogNear: 18, fogFar: 70 },
   { id: 'studio', label: 'Studio', top: '#4a4d54', horizon: '#6d7078', bottom: '#3a3c42', fill: 1.2, fogNear: 25, fogFar: 90 },
   { id: 'daylight', label: 'Tageslicht', top: '#3f6ea8', horizon: '#b9cde0', bottom: '#8a9098', fill: 1.6, fogNear: 60, fogFar: 180 },
+  // Echter Himmel aus @avplan/scene3d nach Ort, Datum, Uhrzeit und Wetter;
+  // die Farben hier sind nur das Vorschaufeld und der Rueckfall ohne Fotomodus.
+  { id: 'sky', label: 'Himmel', top: '#4f86c6', horizon: '#f0c896', bottom: '#5d5a56', fill: 1.6, fogNear: 60, fogFar: 180 },
 ];
 
 export const DEFAULT_BACKDROP: BackdropId = 'venue';

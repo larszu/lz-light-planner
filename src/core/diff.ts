@@ -107,8 +107,9 @@ const personLabel = (p: Person) => p.label || `Person ${num(p.height, ' m')}`;
 const PERSON_FIELDS: FieldSpec<Person>[] = [
   { label: 'Position', get: (p) => `${num(p.x)},${num(p.y)}` },
   { label: 'Größe', get: (p) => num(p.height, ' m') },
-  { label: 'Pose', get: (p) => p.pose || 'standing' },
+  { label: 'Pose', get: (p) => p.posture ?? p.pose ?? 'standing' },
   { label: 'Blickrichtung', get: (p) => num(p.facing, '°') },
+  { label: 'Aussehen', get: (p) => (p.look ? JSON.stringify(p.look) : '–') },
 ];
 
 const trussLabel = (t: Truss) => t.label || 'Traverse';
@@ -272,7 +273,7 @@ const SUN_FIELDS: FieldSpec<SunSettings>[] = [
   { label: 'Datum', get: (s) => s.date || '–' },
   { label: 'Uhrzeit', get: (s) => s.time || '–' },
   { label: 'Nordrichtung', get: (s) => num(s.northDeg, '°') },
-  { label: 'Stärke', get: (s) => num(s.intensity, ' lx') },
+  { label: 'Wetter', get: (s) => s.weather ?? 'klar' },
 ];
 
 const count = (d: CategoryDiff) => d.added.length + d.removed.length + d.changed.length;

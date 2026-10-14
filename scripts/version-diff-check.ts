@@ -97,7 +97,7 @@ const base = (o: Partial<ProjectData> = {}): ProjectData => ({
   const boden = (o: Record<string, unknown> = {}) => ({ preset: 'parquet', color: '#8a5', ...o } as never);
   const sonne = (o: Record<string, unknown> = {}) =>
     ({ enabled: true, latitude: 52.5, longitude: 13.4, date: '2026-06-30', time: '12:00',
-       northDeg: 0, intensity: 100000, ...o } as never);
+       northDeg: 0, place: 'custom', weather: 'klar', ...o } as never);
 
   // (a) HINZUGEFUEGT: die Kategorie war leer, jetzt steht etwas darin.
   const zugang: { name: string; anders: Partial<ProjectData>; kat: keyof ProjectDiff }[] = [

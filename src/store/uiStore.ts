@@ -18,6 +18,7 @@ interface UiState {
   showBeams: boolean; // global on/off for the volumetric light shafts (photo view)
   ambience: number;   // global fill / ambient light level in the render view (0..1)
   backdrop: BackdropId; // Hintergrund der Render-Ansicht; je Rechner gemerkt, nicht im Projekt
+  personScan: boolean; // Render: Personen aus dem GLB-Scan statt aus @avplan/scene3d gebaut
   snapStep: number; // 0 = off, else grid step (m)
   showFocusNotes: boolean; // overlay focus notes on fixtures in the 2D plan
   language: Language;
@@ -33,6 +34,7 @@ interface UiState {
   toggleBeams: () => void;
   setAmbience: (v: number) => void;
   setBackdrop: (b: BackdropId) => void;
+  togglePersonScan: () => void;
   /** Belichtung, Dunst, Umgebung und Strahlen auf die Vorgabe. */
   resetRender: () => void;
   toggleSnap: () => void;
@@ -52,6 +54,9 @@ export const useUiStore = create<UiState>((set) => ({
   ambience: 0.55,
   backdrop: (() => {
     try { return (localStorage.getItem('lp-backdrop') as BackdropId | null) ?? DEFAULT_BACKDROP; } catch { return DEFAULT_BACKDROP; }
+  })(),
+  personScan: (() => {
+    try { return localStorage.getItem('lp-person-scan') === '1'; } catch { return false; }
   })(),
   snapStep: 0,
   showFocusNotes: false,
@@ -83,6 +88,10 @@ export const useUiStore = create<UiState>((set) => ({
   toggleBeams: () => set((s) => ({ showBeams: !s.showBeams })),
   setAmbience: (ambience) => set({ ambience }),
   setBackdrop: (backdrop) => { try { localStorage.setItem('lp-backdrop', backdrop); } catch { /* nur Komfort */ } set({ backdrop }); },
+  togglePersonScan: () => set((s) => {
+    try { localStorage.setItem('lp-person-scan', s.personScan ? '0' : '1'); } catch { /* nur Komfort */ }
+    return { personScan: !s.personScan };
+  }),
   resetRender: () => set({ exposure: 1.2, haze: 0.15, ambience: 0.55, showBeams: true }),
   toggleSnap: () => set((s) => ({ snapStep: s.snapStep > 0 ? 0 : 0.5 })),
   toggleFocusNotes: () => set((s) => ({ showFocusNotes: !s.showFocusNotes })),

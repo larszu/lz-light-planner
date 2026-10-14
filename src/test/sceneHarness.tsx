@@ -8,8 +8,10 @@ import Scene3D from '../components/Scene3D';
 import type { Scene3DHandle } from '../components/Scene3D';
 import { fixtureLibrary } from '../core/fixtureLibrary';
 import type {
-  PlacedFixture, Person, StageElement, Truss, Wall, Ceiling, Layers, CameraView, FloorMaterial, FloorPresetId, WallPresetId,
+  PlacedFixture, Person, StageElement, Truss, Wall, Ceiling, Layers, CameraView, FloorMaterial, FloorPresetId, WallPresetId, SunSettings,
 } from '../types';
+import type { BackdropId } from '../core/surfaceTextures';
+import { defaultSunSettings, resolveSun } from '../core/sun';
 
 const lib = (id: string) => fixtureLibrary.find((f) => f.id === id) ?? fixtureLibrary[0];
 
@@ -34,6 +36,10 @@ const fixtures: PlacedFixture[] = [
 const persons: Person[] = [
   { id: 'p1', x: 5, y: 6, height: 1.80, label: 'A', pose: 'standing', facing: 270 },
   { id: 'p2', x: 7.4, y: 6.6, height: 1.72, label: 'B', pose: 'sitting', facing: 270 },
+  { id: 'p3', x: 3.6, y: 6.4, height: 1.68, label: 'C', pose: 'standing', posture: 'mikrofon', facing: 280,
+    look: { feminine: 1, top: 'kleid', hairLength: 0.3, topColor: '#7a2630', skin: '#bf8a68', hair: '#3a2a1e' } },
+  { id: 'p4', x: 9.2, y: 7.2, height: 1.85, label: 'D', pose: 'standing', posture: 'kameraSchulter', facing: 240,
+    look: { build: 'kraeftig', top: 'sakko', shoes: 'stiefel' } },
 ];
 const stageElements: StageElement[] = [
   { id: 's1', type: 'custom', x: 6.6, y: 5.8, width: 1.6, depth: 1.6, height: 0.4, rotation: 0, label: 'Podest' },
@@ -56,10 +62,17 @@ function Harness() {
   const [showBeams, setBeams] = useState(true);
   const [ambience, setAmb] = useState(0.55);
   const [floor, setFloor] = useState<FloorMaterial>({ preset: 'parquet', color: '#8a5a2f' });
+  const [backdrop, setBackdrop] = useState<BackdropId>('venue');
+  const [sun, setSun] = useState<SunSettings>(defaultSunSettings);
+  const [personScan, setScan] = useState(false);
 
   useEffect(() => {
     const api = {
-      setMode: (m: { photo?: boolean; heatmap?: boolean; exposure?: number; haze?: number; beams?: boolean; ambience?: number; floor?: FloorPresetId; floorColor?: string }) => {
+      setMode: (m: { photo?: boolean; heatmap?: boolean; exposure?: number; haze?: number; beams?: boolean; ambience?: number; floor?: FloorPresetId; floorColor?: string;
+        backdrop?: BackdropId; sun?: Partial<SunSettings>; personScan?: boolean }) => {
+        if (m.backdrop) setBackdrop(m.backdrop);
+        if (m.sun) setSun((s) => ({ ...s, ...m.sun }));
+        if (typeof m.personScan === 'boolean') setScan(m.personScan);
         if ('photo' in m) setPhoto(!!m.photo);
         if ('heatmap' in m) setHeat(!!m.heatmap);
         if (typeof m.exposure === 'number') setExposure(m.exposure);
@@ -88,7 +101,10 @@ function Harness() {
         trusses={trusses}
         walls={walls}
         ceilings={ceilings}
-        sun={null}
+        sun={resolveSun(sun)}
+        sunSettings={sun}
+        backdrop={backdrop}
+        personScan={personScan}
         floorPlan={null}
         layers={allLayers}
         cameras={cameras}
