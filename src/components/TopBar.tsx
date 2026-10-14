@@ -41,6 +41,8 @@ interface Props {
   onAmbienceChange: (v: number) => void;
   onFloorChange: (f: FloorMaterial) => void;
   onBackdropChange: (b: BackdropId) => void;
+  personScan: boolean;
+  onTogglePersonScan: () => void;
   onResetRender: () => void;
   onSunChange: (s: SunSettings) => void;
   onHeatMapScaleChange: (v: number) => void;
@@ -220,6 +222,8 @@ const TopBar: React.FC<Props> = (p) => {
               onHazeChange={p.onHazeChange}
               onToggleBeams={p.onToggleBeams}
               onBackdropChange={p.onBackdropChange}
+              personScan={p.personScan}
+              onTogglePersonScan={p.onTogglePersonScan}
               onFloorChange={p.onFloorChange}
               onSunChange={p.onSunChange}
               onResetRender={p.onResetRender}

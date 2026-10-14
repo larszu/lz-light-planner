@@ -69,7 +69,9 @@ It is **not** a replacement for Vectorworks, or Capture. It's the tool you reach
 ### 🧊 3D preview & Render
 - A Three.js view of the room with the cones drawn in — useful to sanity-check angles and heights
 - **Render** view: real spotlights with shadows, volumetric beams in haze, AgX tone mapping and 4× multisampling (edges stay smooth with bloom on)
-- **Backgrounds**: hall (default), black box, studio and daylight — a gradient dome the floor fades into, with the ambient fill matched to it (almost none in the black box, plenty in daylight)
+- **Backgrounds**: hall (default), black box, studio, daylight and **sky** — the first four are a gradient dome the floor fades into, with the ambient fill matched to it (almost none in the black box, plenty in daylight); *sky* is a real sky with sun, moon, stars and clouds for open-air stages and views out of a window
+- **Time of day & weather** (under *Sun / daylight*): place (German cities or own coordinates), date, a time slider across the day with sunrise and sunset and the golden and blue hour marked on its track, and weather (clear, partly cloudy, overcast, hazy). Sun position, colour and daylight levels come from `@avplan/scene3d`; the exposure follows the daylight, and your exposure slider trims around it
+- **People**: built figures with a choice of 13 poses (standing, sitting, talking, microphone, guitar, shoulder camera …) and their own look — build, body shape, top, bottom, shoes, colours, skin tone, hair. Unset fields get a stable variety per person. *Scanned person model* under Render switches to the photo-scanned figure instead
 - **Floors**: stage floor (default for new plans), concrete, parquet, floorboards, tiles, carpet or plain, each tintable
 - The camera stays above the floor; screenshot button for sharing
 - All of it sits under **Display** at the top right: display toggles (heat-map, snap, focus notes), render (background, floor, exposure, ambience, haze, beams — double-click a slider to reset it, *Reset* for all) and sun/daylight. The render settings can be adjusted from any view; *Open Render* switches over
@@ -78,6 +80,7 @@ It is **not** a replacement for Vectorworks, or Capture. It's the tool you reach
 - A rough lux estimate on the floor based on the fixtures' photometric data
 - Switch on a target value to colour the floor by under / on / over
 - Not a replacement for a real photometric study — close enough for a sketch
+- With the sun on, daylight counts in real lux: direct sun through windows (walls cast shadows) on the floor, on people and on every surface under the cursor; open sky is added only where the plan has no walls or ceilings (an open-air stage)
 
 ### 🎚️ A fixture & gel library
 - Source Fours, PARs, Fresnels, LED panels and a few moving heads
@@ -213,8 +216,11 @@ Today that is `@avplan/floorplan`: the floor-plan loader (images, PDF via
 pdf.js passed in, drag & drop) and the venue-exchange schema (with the optional
 room fields: ceiling, floor, seating blocks, video walls); and `@avplan/scene3d`,
 from which the Render view takes its haze beams (raymarched, now entering the
-cone exactly, without grain, with slowly drifting uneven haze) and the GLB
-person loader with the seated pose. The beam density still follows the dimmer,
+cone exactly, without grain, with slowly drifting uneven haze), the sky and
+sun position (`Himmel`, `sonnenstand`; also the source of the heat-map's
+daylight), the built people (`erzeugeMensch`) and the GLB person loader with
+the seated pose. The light scale shared by spotlights and daylight is
+explained in `src/core/daylightRender.ts`. The beam density still follows the dimmer,
 as before. **Do not edit
 the copy** — change the package in the suite and run `npm run pakete:verteilen`
 there. `npm run kopien:check` recomputes every hash and fails on a changed or

@@ -6,19 +6,17 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { erzeugeDunstStrahl, ladePersonModell, tiefsterPunkt, wendeSitzposeAn } from '../avplan/scene3d';
+import { erzeugeDunstStrahl, erzeugeMensch, erzeugeSitze, istSitzend, kelvinZuFarbe, ladePersonModell, tiefsterPunkt, wendeSitzposeAn, Himmel } from '../avplan/scene3d';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import type { PlacedFixture, Person, StageElement, Truss, Wall, Ceiling, FloorPlan, Layers, CameraView, FloorMaterial } from '../types';
-import { computeHeatMap, surfaceLux, luxToColor, luxToColorTarget, effectiveFieldAngleDeg, peakCandela } from '../core/lightCalc';
+import type { PlacedFixture, Person, StageElement, Truss, Wall, Ceiling, FloorPlan, Layers, CameraView, FloorMaterial, SunSettings } from '../types';
+import { computeHeatMap, surfaceLux, sunSurfaceLux, luxToColor, luxToColorTarget, effectiveFieldAngleDeg, peakCandela } from '../core/lightCalc';
 import { getBeamColorHex } from '../core/colorTemp';
 import { sampleWall, isCurved, pointInPolygon, wallSegments, normalizedWindows, type NormWindow } from '../core/geometry';
 import { floorPreset, wallPreset, surfaceCanvas, DEFAULT_FLOOR, backdrop as backdropOf, TECH_BACKDROP, type Backdrop, type BackdropId, type SurfacePreset } from '../core/surfaceTextures';
-import type { ResolvedSun } from '../core/sun';
+import { sunInstant, type ResolvedSun } from '../core/sun';
+import { EXPOSURE_DEFAULT, LIGHT_K, LUX_PER_UNIT, renderDaylight, renderedDaylightLux } from '../core/daylightRender';
+import { figureOf, postureOf } from '../core/personLook';
 import { useTranslation } from '../i18n';
-
-// Candela → three.js spotlight intensity. Keeps relative brightness physical
-// (ratios + 1/r² falloff); the exposure control handles absolute calibration.
-const LIGHT_K = 0.0032;
 
 // ── Hintergrund-Kuppel ──────────────────────────────────────────────────────
 // Ein Verlauf oben → Horizont → unten auf einer Kugel, die der Kamera folgt.
@@ -42,6 +40,12 @@ const DOME_FRAG = /* glsl */`
     gl_FragColor = vec4(c, 1.0);
     #include <colorspace_fragment>
   }`;
+
+// Kantenlaenge der Himmelsbox; sie folgt der Kamera und muss in camera.far (400) passen.
+const SKY_SIZE = 300;
+// Bloom: nur ein Hof um die hellsten Stellen; Schwelle hoch, damit Haut nicht gluehen.
+const BLOOM_STRENGTH = 0.32;
+const BLOOM_THRESHOLD = 0.85;
 
 function applyBackdrop(dome: THREE.Mesh, scene: THREE.Scene, b: Backdrop) {
   const u = (dome.material as THREE.ShaderMaterial).uniforms;
@@ -118,6 +122,10 @@ function applyFloorMaterial(ground: THREE.Mesh, floor: FloorMaterial, photo: boo
 interface Props {
   /** Hintergrund der Render-Ansicht; die technische 3D-Ansicht hat ihren eigenen. */
   backdrop?: BackdropId;
+  /** Render people from the GLB scan instead of the built figures. */
+  personScan?: boolean;
+  /** Raw sun settings: the sky needs place and time also at night. */
+  sunSettings?: SunSettings;
   fixtures: PlacedFixture[];
   persons: Person[];
   stageElements: StageElement[];
@@ -142,7 +150,7 @@ interface Props {
   onHoverLux?: (lux: number | null) => void;
 }
 
-const Scene3D = forwardRef<Scene3DHandle, Props>(({ fixtures, persons, stageElements, trusses, walls, ceilings, floorPlan, layers, cameras, selectedIds, showHeatMap, heatMapScale, heatMapTarget, photoMode, exposure, haze, showBeams, ambience, floor, sun, onSelect, onHoverLux, backdrop = 'venue' }, ref) => {
+const Scene3D = forwardRef<Scene3DHandle, Props>(({ fixtures, persons, stageElements, trusses, walls, ceilings, floorPlan, layers, cameras, selectedIds, showHeatMap, heatMapScale, heatMapTarget, photoMode, exposure, haze, showBeams, ambience, floor, sun, onSelect, onHoverLux, backdrop = 'venue', personScan = false, sunSettings }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const { t } = useTranslation();
   // Warum die Ansicht leer ist — falls sie leer ist. Siehe die Begruendung am
@@ -176,6 +184,10 @@ const Scene3D = forwardRef<Scene3DHandle, Props>(({ fixtures, persons, stageElem
   // Current lit fixtures + hover callback, read by the (once-built) pointer
   // handler so the live lux readout always uses fresh data.
   const litRef = useRef<PlacedFixture[]>([]);
+  const daylightRef = useRef<{ sun: ResolvedSun | null; walls: Wall[]; ceilings: Ceiling[] }>({ sun: null, walls: [], ceilings: [] });
+  daylightRef.current = { sun, walls, ceilings };
+  const himmelRef = useRef<{ h: Himmel; mond: THREE.Vector3 } | null>(null);
+  const boundsRef = useRef({ center: new THREE.Vector3(), size: 40 });
   const onHoverLuxRef = useRef(onHoverLux);
   onHoverLuxRef.current = onHoverLux;
   // Real human model for the photo view (lazy-loaded on first use).
@@ -183,8 +195,8 @@ const Scene3D = forwardRef<Scene3DHandle, Props>(({ fixtures, persons, stageElem
   useEffect(() => {
     // Load the real human only for the photo view (plain 3D / heat-map use the
     // simple stand-in figure, so the heavy GLB isn't needed there).
-    if (photoMode && !personModel) loadPersonModel().then(setPersonModel).catch(() => { /* keep fallback */ });
-  }, [photoMode, personModel]);
+    if (photoMode && personScan && !personModel) loadPersonModel().then(setPersonModel).catch(() => { /* keep fallback */ });
+  }, [photoMode, personScan, personModel]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -312,9 +324,9 @@ const Scene3D = forwardRef<Scene3DHandle, Props>(({ fixtures, persons, stageElem
     composer.addPass(new RenderPass(scene, camera));
     const bloom = new UnrealBloomPass(
       new THREE.Vector2(container.clientWidth, container.clientHeight),
-      0.32, // strength (subtle – just a halo on the brightest bits)
+      BLOOM_STRENGTH,
       0.4,  // radius
-      0.85, // threshold (raised so lit faces/skin don't bloom into a glow)
+      BLOOM_THRESHOLD,
     );
     composer.addPass(bloom);
     composer.addPass(new OutputPass());
@@ -372,6 +384,12 @@ const Scene3D = forwardRef<Scene3DHandle, Props>(({ fixtures, persons, stageElem
       applyWASD();
       controls.update();
       dome.position.copy(camera.position);
+      const hm = himmelRef.current;
+      if (hm) {
+        hm.h.himmel.position.copy(camera.position);
+        hm.h.sterne.position.copy(camera.position);
+        hm.h.mondScheibe.position.copy(hm.mond).multiplyScalar(SKY_SIZE * 0.4).add(camera.position);
+      }
       if (photoModeRef.current) {
         renderer.toneMappingExposure = exposureRef.current;
         composer.render();
@@ -420,7 +438,7 @@ const Scene3D = forwardRef<Scene3DHandle, Props>(({ fixtures, persons, stageElem
       const cb = onHoverLuxRef.current;
       if (!cb) return;
       const lit = litRef.current;
-      if (!lit.length) { cb(null); return; }
+      if (!lit.length && !daylightRef.current.sun) { cb(null); return; }
       const rect = renderer.domElement.getBoundingClientRect();
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -437,7 +455,9 @@ const Scene3D = forwardRef<Scene3DHandle, Props>(({ fixtures, persons, stageElem
       const p = hit.point;
       const n = hit.face!.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
       // three world (x, yUp, z) + normal → plan space (x, z, height) for surfaceLux.
-      cb(Math.max(0, surfaceLux(lit, p.x, p.z, p.y, n.x, n.z, n.y, false)));
+      const d = daylightRef.current;
+      const day = d.sun ? sunSurfaceLux(d.sun, d.walls, d.ceilings, p.x, p.z, p.y, n.x, n.z, n.y) : 0;
+      cb(Math.max(0, surfaceLux(lit, p.x, p.z, p.y, n.x, n.z, n.y, false) + day));
     };
     const handlePointerLeave = () => onHoverLuxRef.current?.(null);
     renderer.domElement.addEventListener('pointermove', handlePointerMove);
@@ -481,6 +501,7 @@ const Scene3D = forwardRef<Scene3DHandle, Props>(({ fixtures, persons, stageElem
 
   // Toggle the photo-realistic look: real tone mapping + exposure, dim the
   // generic fill lights so the fixtures carry the scene, hide the helper grid.
+  // Light scale and exposure: see core/daylightRender.ts.
   useEffect(() => {
     photoModeRef.current = photoMode;
     exposureRef.current = exposure;
@@ -490,31 +511,88 @@ const Scene3D = forwardRef<Scene3DHandle, Props>(({ fixtures, persons, stageElem
     // gesaettigte LED-Farben auf; AgX laesst Farbe und Helligkeit getrennter.
     s.renderer.toneMapping = photoMode ? THREE.AgXToneMapping : THREE.NoToneMapping;
     s.renderer.toneMappingExposure = exposure;
-    // Das Fuelllicht folgt dem Hintergrund: in der Blackbox kaum, bei
-    // Tageslicht viel. Vorher hellte es den Boden so weit auf, dass die
-    // Lichtpools der Scheinwerfer darauf kaum noch zu sehen waren.
-    const bd = photoMode ? backdropOf(backdrop) : TECH_BACKDROP;
-    const fill = ambience * bd.fill;
-    s.ambient.intensity = photoMode ? fill * 0.1 : 0.5;
-    s.hemi.intensity = photoMode ? fill * 0.45 : 0.0;
-    s.hemi.color.set(photoMode ? bd.top : '#7d8aa0');
-    s.hemi.color.lerp(new THREE.Color('#ffffff'), 0.6);
-    s.dir.intensity = photoMode ? fill * 0.12 : 0.3;
-    s.scene.environmentIntensity = photoMode ? fill * 0.3 : 0;
-    applyBackdrop(s.dome, s.scene, bd);
-    // Global sun (issue #28): place the directional sun light from the resolved
-    // sun position. The light comes from the sun's direction toward the room.
-    if (sun) {
-      const D = 120;
-      s.sun.position.set(sun.dir3D.x * D, Math.max(2, sun.dir3D.y * D), sun.dir3D.z * D);
-      s.sun.target.position.set(0, 0, 0);
-      s.sun.target.updateMatrixWorld();
-      s.sun.color.set(sun.color);
-      s.sun.intensity = (photoMode ? 2.6 : 1.1) * Math.max(0.05, Math.sin(sun.altitude));
-      s.sun.visible = true;
-    } else {
+    const skyOn = photoMode && backdrop === 'sky' && !!sunSettings;
+    const at = sunSettings ? sunInstant(sunSettings) : null;
+
+    if (skyOn && at && sunSettings) {
+      let hm = himmelRef.current;
+      if (!hm) {
+        hm = { h: new Himmel({ luxProEinheit: LUX_PER_UNIT, himmelGroesse: SKY_SIZE, szenenGroesseM: 60 }), mond: new THREE.Vector3() };
+        s.scene.add(hm.h.gruppe);
+        himmelRef.current = hm;
+      }
+      hm.h.passeSchattenAn(boundsRef.current.size, boundsRef.current.center);
+      const day = renderDaylight(at, sunSettings.latitude, sunSettings.longitude, sunSettings.weather);
+      const trim = exposure / EXPOSURE_DEFAULT;
+      const shown = day.exposure * trim;
+      const z = hm.h.aktualisiere({ datum: at, lat: sunSettings.latitude, lon: sunSettings.longitude, nordDeg: sunSettings.northDeg, wetter: day.wetter, belichtung: shown });
+      hm.mond.copy(z.mond.richtung);
+      // Kein vorgefiltertes Himmels-Environment: der Sky-Shader ist nicht auf
+      // Lux geeicht und legte bei Tag einen grauen Glanz ueber Boden und Wand.
+      // Das Himmelslicht (Hemisphaere, aus `himmelDiffusLux`) ist es.
+      s.scene.environment = s.env;
+      s.scene.environmentIntensity = 0.15;
+      // Der Himmel ist Kulisse: unter der Buehnen-Belichtung (Nacht, blaue
+      // Stunde) soll er so aussehen, wie das Paket ihn fuer seine eigene
+      // Belichtung meint.
+      const u = (hm.h.himmel.material as THREE.ShaderMaterial).uniforms;
+      u.uHelligkeit.value *= Math.max(1, (z.belichtung * trim) / shown);
+      exposureRef.current = shown;
+      s.renderer.toneMappingExposure = shown;
+      // Bloom sieht die Werte vor der Belichtung: bei Tag (Belichtung ~0,2)
+      // laege der ganze Himmel ueber der Schwelle und schleierte das Bild ein.
+      const tag = Math.min(1, day.exposure / EXPOSURE_DEFAULT);
+      s.bloom.threshold = BLOOM_THRESHOLD / tag;
+      s.bloom.strength = BLOOM_STRENGTH * tag;
+      // Linearer Nebel wie bei den anderen Hintergruenden: er verdeckt die
+      // Bodenkante; die Dichte des Wetters rueckt ihn naeher.
+      const nah = 1 + z.nebelDichte * 300;
+      s.scene.fog = new THREE.Fog(0, 60 / nah, 180 / nah);
+      (s.scene.fog as THREE.Fog).color.copy(z.nebelFarbe);
+      s.scene.background = null;
+      s.dome.visible = false;
+      s.ambient.intensity = 0;
+      s.hemi.intensity = 0;
+      s.dir.intensity = 0;
       s.sun.visible = false;
       s.sun.intensity = 0;
+    } else {
+      if (himmelRef.current) {
+        himmelRef.current.h.dispose();
+        himmelRef.current = null;
+      }
+      s.scene.environment = s.env;
+      s.dome.visible = true;
+      s.bloom.threshold = BLOOM_THRESHOLD;
+      s.bloom.strength = BLOOM_STRENGTH;
+      // Das Fuelllicht folgt dem Hintergrund: in der Blackbox kaum, bei
+      // Tageslicht viel. Vorher hellte es den Boden so weit auf, dass die
+      // Lichtpools der Scheinwerfer darauf kaum noch zu sehen waren.
+      const bd = photoMode ? backdropOf(backdrop === 'sky' ? 'daylight' : backdrop) : TECH_BACKDROP;
+      const fill = ambience * bd.fill;
+      s.ambient.intensity = photoMode ? fill * 0.1 : 0.5;
+      s.hemi.intensity = photoMode ? fill * 0.45 : 0.0;
+      s.hemi.color.set(photoMode ? bd.top : '#7d8aa0');
+      s.hemi.color.lerp(new THREE.Color('#ffffff'), 0.6);
+      s.dir.intensity = photoMode ? fill * 0.12 : 0.3;
+      s.scene.environmentIntensity = photoMode ? fill * 0.3 : 0;
+      applyBackdrop(s.dome, s.scene, bd);
+      // Global sun (issue #28) through the windows of a hall: same scale as the
+      // spotlights, daylight compressed like the sky (core/daylightRender.ts).
+      if (sun) {
+        const D = 120;
+        s.sun.position.set(sun.dir3D.x * D, Math.max(2, sun.dir3D.y * D), sun.dir3D.z * D);
+        s.sun.target.position.set(0, 0, 0);
+        s.sun.target.updateMatrixWorld();
+        kelvinZuFarbe(sun.colorTempK, s.sun.color);
+        const real = sun.lux + sun.skyLux;
+        const factor = real > 0 ? renderedDaylightLux(real) / real : 1;
+        s.sun.intensity = photoMode ? (sun.directNormalLux * factor) / LUX_PER_UNIT : 1.1 * Math.max(0.05, Math.sin(sun.altitude));
+        s.sun.visible = true;
+      } else {
+        s.sun.visible = false;
+        s.sun.intensity = 0;
+      }
     }
     s.grid.visible = !photoMode;
     applyFloorMaterial(s.ground, floor, photoMode);
@@ -523,7 +601,12 @@ const Scene3D = forwardRef<Scene3DHandle, Props>(({ fixtures, persons, stageElem
       const m = (o as THREE.Mesh).material;
       if (m) (Array.isArray(m) ? m : [m]).forEach((mm) => { mm.needsUpdate = true; });
     });
-  }, [photoMode, exposure, ambience, floor, sun, backdrop]);
+  }, [photoMode, exposure, ambience, floor, sun, backdrop, sunSettings]);
+
+  useEffect(() => () => {
+    himmelRef.current?.h.dispose();
+    himmelRef.current = null;
+  }, []);
 
   // Update scene objects when data changes
   useEffect(() => {
@@ -543,6 +626,11 @@ const Scene3D = forwardRef<Scene3DHandle, Props>(({ fixtures, persons, stageElem
     for (const c of ceilings) for (const p of c.points) acc(p.x, p.y);
     if (floorPlan) { acc(floorPlan.offsetX, floorPlan.offsetY); acc(floorPlan.offsetX + floorPlan.widthMeters, floorPlan.offsetY + floorPlan.heightMeters); }
     const hasContent = bMinX !== Infinity;
+    if (hasContent) {
+      boundsRef.current.center.set((bMinX + bMaxX) / 2, 0, (bMinY + bMaxY) / 2);
+      boundsRef.current.size = Math.max(10, Math.hypot(bMaxX - bMinX, bMaxY - bMinY) + 6);
+      himmelRef.current?.h.passeSchattenAn(boundsRef.current.size, boundsRef.current.center);
+    }
 
     // Remove old dynamic objects (traverse so meshes/lights inside groups are
     // disposed too — including spotlight shadow maps).
@@ -581,7 +669,8 @@ const Scene3D = forwardRef<Scene3DHandle, Props>(({ fixtures, persons, stageElem
       nx: number, ny: number, nz: number,
       twoSided: boolean,
     ): [number, number, number, number] => {
-      const lux = surfaceLux(lit, wx, wz, wy, nx, nz, ny, twoSided);
+      const lux = surfaceLux(lit, wx, wz, wy, nx, nz, ny, twoSided)
+        + (sun ? sunSurfaceLux(sun, walls, ceilings, wx, wz, wy, nx, nz, ny) : 0);
       const [r, g, b, a] = heatMapTarget > 0 ? luxToColorTarget(lux, heatMapTarget) : luxToColor(lux, heatScale);
       return [r / 255, g / 255, b / 255, a / 255];
     };
@@ -1079,10 +1168,34 @@ const Scene3D = forwardRef<Scene3DHandle, Props>(({ fixtures, persons, stageElem
         }
       }
 
-      // A real, photo-scanned casual human — ONLY in the photo view. Plain 3D
-      // and the heat-map use the simple stand-in figure (below), so turning the
-      // photo view off (or heat-map on without photo) gives clean cylinders.
-      // In photo + heat-map the lux values are draped on top of the real body.
+      // Photo view: a built figure from @avplan/scene3d (pose, clothing, build,
+      // skin and hair per person) or — if chosen — the photo-scanned GLB.
+      // Plain 3D and the heat-map without photo use the simple stand-in
+      // figure (below). In photo + heat-map the lux values are draped on top.
+      if (photoMode && !personScan) {
+        const posture = postureOf(p);
+        const { farben, gestalt } = figureOf(p);
+        const m = erzeugeMensch(posture, farben, p.height, gestalt);
+        const sitzt = istSitzend(posture);
+        m.rotation.y = ((90 - (p.facing ?? 270)) * Math.PI) / 180;
+        // Die Sitzflaeche liegt in der Geometrie schon bei 0,45 m und waechst nicht mit.
+        m.position.set(p.x, floorH + (sitzt ? 0.45 * (1 - p.height / 1.75) : 0), p.y);
+        if (isSel && !heatOn) {
+          const mat = m.material as THREE.MeshPhysicalMaterial;
+          mat.emissive.set('#ffcc33');
+          mat.emissiveIntensity = 0.22;
+        }
+        m.userData = { dynamic: true, selectId: p.id };
+        scene.add(m);
+        if (sitzt) {
+          const sitz = erzeugeSitze([{ x: p.x, y: p.y, z: floorH, blickDeg: p.facing ?? 270 }]);
+          sitz.castShadow = true;
+          sitz.userData = { dynamic: true, selectId: p.id };
+          scene.add(sitz);
+        }
+        if (heatOn) buildPersonHeatOverlay(m, p.id);
+        continue;
+      }
       if (photoMode && personModel) {
         const m = cloneSkeleton(personModel.scene) as THREE.Group;
         const s = p.height / personModel.height;
@@ -1381,7 +1494,7 @@ const Scene3D = forwardRef<Scene3DHandle, Props>(({ fixtures, persons, stageElem
       s.controls.update();
       framedRef.current = true;
     }
-  }, [fixtures, persons, stageElements, trusses, walls, ceilings, floorPlan, layers, cameras, selectedIds, showHeatMap, heatMapScale, heatMapTarget, photoMode, haze, showBeams, personModel, sun]);
+  }, [fixtures, persons, stageElements, trusses, walls, ceilings, floorPlan, layers, cameras, selectedIds, showHeatMap, heatMapScale, heatMapTarget, photoMode, haze, showBeams, personModel, personScan, sun]);
 
   useImperativeHandle(ref, () => ({
     screenshot: () => {

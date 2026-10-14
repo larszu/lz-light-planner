@@ -88,6 +88,8 @@ const HARMLOS = new Set(
     // Bibliotheks-Clients — einer unveraenderten Kopie aus
     // larszu/av-device-library, die hier nicht umgeschrieben werden darf.
     'request', 'requested', 'does', 'goes', 'guess', 'continue', 'sequence',
+    // 2026-10-14: Personen-Aussehen und Tageszeit (Schuhe, „Blaue Stunde").
+    'shoe', 'shoes', 'blaue',
     // Ein Paar fuer sich ist nie ein deutsches Wort — es kommt aus einer UUID,
     // einer Farbe oder einem Pfad.
     'ae', 'oe', 'ue',
@@ -100,7 +102,11 @@ const HARMLOS = new Set(
 // `@avplan/floorplan` (ADR-015, Kopie unter `src/avplan/floorplan`, dort nicht
 // aenderbar), kein Anzeigetext: App.tsx uebersetzt ihn in einen Satz. Er
 // steht als Literal im Paket und im `switch` darauf.
-const KENNUNGEN = new Set(['geraeteliste.csv', 'geraeteliste.pdf', 'rueckweg-pult.csv', 'geraetetyp', 'pdf-nicht-verfuegbar']);
+//
+// 2026-10-14: `kraeftig` (Statur) und `leicht-bewoelkt` (Wetter) sind Werte
+// der Typen `Statur` und `WetterArt` aus `@avplan/scene3d`; sie landen so in
+// der Projektdatei, angezeigt wird die Uebersetzung.
+const KENNUNGEN = new Set(['kraeftig', 'leicht-bewoelkt', 'geraeteliste.csv', 'geraeteliste.pdf', 'rueckweg-pult.csv', 'geraetetyp', 'pdf-nicht-verfuegbar']);
 
 const istHex = (wort: string) => /^[0-9a-f]+$/i.test(wort);
 

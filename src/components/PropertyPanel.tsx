@@ -1,5 +1,6 @@
 import React from 'react';
 import Icon from './Icon';
+import PersonLookEditor from './PersonLookEditor';
 import type { PlacedFixture, Person, StageElement, Fixture, Truss, Wall, Ceiling, Shape, CameraView, WallWindow, DmxMode, DmxModeOrigin } from '../types';
 import { wallMidHandle, curveControlForMid, wallLength } from '../core/geometry';
 import { luxFromFixture, effectiveFieldAngleDeg, explainLux } from '../core/lightCalc';
@@ -770,13 +771,6 @@ const PropertyPanel: React.FC<Props> = ({
         <div className="prop-section">
           <span className="prop-section-title">{t('prop.poseTitle', 'Pose & facing (photo view)')}</span>
           <label className="prop-field">
-            <span>{t('prop.pose', 'Pose')}</span>
-            <select value={p.pose ?? 'standing'} onChange={(e) => onUpdatePerson(p.id, { pose: e.target.value as 'standing' | 'sitting' })}>
-              <option value="standing">{t('prop.standing', 'Standing')}</option>
-              <option value="sitting">{t('prop.sitting', 'Sitting')}</option>
-            </select>
-          </label>
-          <label className="prop-field">
             <span>{t('prop.facing', 'Facing')} ({Math.round(p.facing ?? 270)}°)</span>
             <input type="range" min={0} max={360} step={5} value={p.facing ?? 270}
               onChange={(e) => onUpdatePerson(p.id, { facing: Number(e.target.value) })} />
@@ -791,6 +785,7 @@ const PropertyPanel: React.FC<Props> = ({
               <button key={lbl as string} className="refl-btn" onClick={() => onUpdatePerson(p.id, { facing: v as number })}>{lbl}</button>
             ))}
           </div>
+          <PersonLookEditor person={p} onUpdate={(u) => onUpdatePerson(p.id, u)} />
           <div className="prop-derived">{t('prop.poseNote', 'Sitting pairs well with a riser or chair underneath. Takes effect in the 3D photo mode.')}</div>
         </div>
         <button className="auto-btn wide" onClick={() => onAutoThreePointForPerson(p.id)}>

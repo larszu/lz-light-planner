@@ -3,6 +3,10 @@ import type { DmxProtocol } from './core/universeIdentity';
 import type { PhaseTemplate } from './core/powerDistribution';
 import type { OrderTiming } from './core/retime';
 import type { SceneActual } from './core/actuals';
+import type { OrtArt } from './avplan/scene3d/sonne';
+import type { Pose } from './avplan/scene3d/menschSkelett';
+import type { Statur, Oberteil, Unterteil, Schuhe } from './avplan/scene3d/menschKoerper';
+import type { WetterArt } from './avplan/scene3d/himmel';
 
 export type FixtureCategory =
   | 'profile'        // Profilscheinwerfer / Ellipsoidal (ETC Source Four, Selecon)
@@ -416,8 +420,27 @@ export interface Person {
   y: number;            // meters
   height: number;       // meters (default 1.75)
   label: string;
-  pose?: PersonPose;    // standing (default) or sitting (3D photo figure)
+  pose?: PersonPose;    // standing (default) or sitting; follows `posture` for plan and exchange
   facing?: number;      // direction the person looks, degrees in plan (0 = +X). Default 270 (−Y / downstage)
+  /** Render pose from @avplan/scene3d; without it `pose` decides (stehen / sitzen). */
+  posture?: Pose;
+  /** Render look; unset fields get a stable variety from the person's id. */
+  look?: PersonLook;
+}
+
+export interface PersonLook {
+  build?: Statur;
+  top?: Oberteil;
+  bottom?: Unterteil;
+  shoes?: Schuhe;
+  /** 0 masculine … 1 feminine body shape. */
+  feminine?: number;
+  /** Hair below the hairline in m; 0 = bald. */
+  hairLength?: number;
+  skin?: string;
+  hair?: string;
+  topColor?: string;
+  bottomColor?: string;
 }
 
 // ── Stage elements (Podeste) ──
@@ -627,8 +650,13 @@ export interface SunSettings {
   date: string;       // 'YYYY-MM-DD'
   time: string;       // 'HH:MM' local clock time
   northDeg: number;   // 0..360 — compass rotation of the plan ("up" = North at 0)
-  intensity: number;  // direct-normal illuminance at full sun (lux)
+  /** Preset from ORTE or own coordinates; presets fix the time zone (Europe/Berlin). */
+  place?: SunPlace;
+  weather?: SunWeather;
 }
+
+export type SunPlace = OrtArt | 'custom';
+export type SunWeather = WetterArt;
 
 // ── Project save/load ──
 export interface ProjectMeta {

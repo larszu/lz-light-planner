@@ -5,7 +5,7 @@ import { addNote, normalizeWorkNotes, removeNote, toggleNote } from './core/work
 import { DEFAULT_PROTOCOL, type DmxProtocol } from './core/universeIdentity';
 import { DEFAULT_TEMPLATE, type PhaseTemplate } from './core/powerDistribution';
 import { convexHull } from './core/geometry';
-import { resolveSun, defaultSunSettings } from './core/sun';
+import { resolveSun, defaultSunSettings, normalizeSun } from './core/sun';
 import TopBar from './components/TopBar';
 import ToolRail from './components/ToolRail';
 import SeitenPanel from './components/SeitenPanel';
@@ -232,6 +232,8 @@ const App: React.FC = () => {
   const setAmbience = useUiStore((s) => s.setAmbience);
   const backdrop = useUiStore((s) => s.backdrop);
   const setBackdrop = useUiStore((s) => s.setBackdrop);
+  const personScan = useUiStore((s) => s.personScan);
+  const togglePersonScan = useUiStore((s) => s.togglePersonScan);
   const resetRender = useUiStore((s) => s.resetRender);
   const [layers, setLayers] = useState<Layers>(DEFAULT_LAYERS);
   const [cameras, setCameras] = useState<CameraView[]>([]);
@@ -248,6 +250,11 @@ const App: React.FC = () => {
   const [floor, setFloor] = useState<FloorMaterial>(DEFAULT_FLOOR);
   const [sun, setSun] = useState<SunSettings>(defaultSunSettings);
   const resolvedSun = useMemo(() => resolveSun(sun), [sun]);
+  // Position also while the sun is off for the heat-map: the sky backdrop shows it.
+  const sunInfo = useMemo(() => {
+    const r = resolveSun({ ...sun, enabled: true });
+    return r ? { altitudeDeg: r.altitudeDeg, azimuthDeg: r.azimuthDeg } : null;
+  }, [sun]);
   const [planMode, setPlanMode] = useState<PlanMode>('none');
   const [pendingCalibration, setPendingCalibration] = useState<{ meters: number; pivotX: number; pivotY: number } | null>(null);
   const snapStep = useUiStore((s) => s.snapStep);
@@ -930,7 +937,7 @@ const App: React.FC = () => {
     setCameras(data.cameras ?? []);
     setLayers(data.layers ?? DEFAULT_LAYERS);
     setFloor(data.floor ?? DEFAULT_FLOOR);
-    setSun(data.sun ?? defaultSunSettings());
+    setSun(normalizeSun(data.sun));
     // Restore the building plan + its calibration (rebuild the live image).
     pdfDocRef.current = null;
     if (data.floorPlan) {
@@ -1744,7 +1751,7 @@ const App: React.FC = () => {
         ambience={ambience}
         floor={floor}
         sun={sun}
-        sunInfo={resolvedSun ? { altitudeDeg: resolvedSun.altitudeDeg, azimuthDeg: resolvedSun.azimuthDeg } : null}
+        sunInfo={sunInfo}
         heatMapScale={heatMapScale}
         heatMapTarget={heatMapTarget}
         snapStep={snapStep}
@@ -1757,6 +1764,8 @@ const App: React.FC = () => {
         onAmbienceChange={setAmbience}
         backdrop={backdrop}
         onBackdropChange={setBackdrop}
+        personScan={personScan}
+        onTogglePersonScan={togglePersonScan}
         onResetRender={resetRender}
         onFloorChange={setFloor}
         onSunChange={setSun}
@@ -1895,6 +1904,8 @@ const App: React.FC = () => {
               <Scene3D
                 ref={scene3DRef}
                 backdrop={backdrop}
+                personScan={personScan}
+                sunSettings={sun}
                 fixtures={shownFixtures}
                 persons={persons}
                 stageElements={stageElements}
