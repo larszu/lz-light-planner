@@ -5,3 +5,6 @@ dist/
 .env*
 release/
 *.tsbuildinfo
+
+# Personen-Scan (keine Lizenz) – nie wieder einchecken
+*.glb

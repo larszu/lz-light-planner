@@ -9,10 +9,9 @@ export const HAIR_COLOURS = ['#0f0d0c', '#3a2a1e', '#8a6a48', '#b89b70', '#8f8a8
 export const HAIR_LENGTHS = [0, 0.04, 0.12, 0.3] as const;
 
 // No scan with a clear licence is available: the former public/models/person.glb
-// came from a repository without any licence (scan of a real person), so it
-// moved to dev-assets/ (dev server only, not in Pages or the app) and the
-// option is hidden. To bring it back, ship a licensed GLB as
-// public/models/person.glb and set this to true.
+// came from a repository without any licence and scanned a real person, so it
+// is gone from the tree and the option is hidden. To bring it back, ship a
+// licensed GLB as public/models/person.glb and set this to true.
 export const PERSON_SCAN_AVAILABLE = false;
 
 export function postureOf(p: Pick<Person, 'pose' | 'posture'>): Pose {
