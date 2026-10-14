@@ -194,7 +194,12 @@ product name.
 `av-planner-suite/packages/<name>` and arrives here as a character-identical
 copy under `src/avplan/<name>/` with a `MANIFEST.json` (SHA-256 per file).
 Today that is `@avplan/floorplan`: the floor-plan loader (images, PDF via
-pdf.js passed in, drag & drop) and the venue-exchange schema. **Do not edit
+pdf.js passed in, drag & drop) and the venue-exchange schema (with the optional
+room fields: ceiling, floor, seating blocks, video walls); and `@avplan/scene3d`,
+from which the Render view takes its haze beams (raymarched, now entering the
+cone exactly, without grain, with slowly drifting uneven haze) and the GLB
+person loader with the seated pose. The beam density still follows the dimmer,
+as before. **Do not edit
 the copy** — change the package in the suite and run `npm run pakete:verteilen`
 there. `npm run kopien:check` recomputes every hash and fails on a changed or
 unlisted file.
