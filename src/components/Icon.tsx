@@ -9,9 +9,14 @@ export type IconName =
   | 'undo' | 'redo' | 'search' | 'chevronRight' | 'chevronLeft' | 'chevronDown' | 'eye' | 'eyeOff'
   | 'lock' | 'unlock' | 'plus' | 'minus' | 'snap' | 'ruler' | 'tag' | 'menu' | 'beam'
   | 'scene' | 'layers' | 'library' | 'lamp' | 'autolight' | 'distribute' | 'align'
-  | 'group' | 'rotate' | 'trash' | 'info' | 'check' | 'close' | 'ceiling';
+  | 'group' | 'rotate' | 'trash' | 'info' | 'check' | 'close' | 'ceiling'
+  | 'sun' | 'moon' | 'themeAuto';
 
 const P: Record<IconName, React.ReactNode> = {
+  sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>,
+  moon: <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />,
+  // Halb gefuellter Kreis: „folgt dem System" im Umschalter Auto · Hell · Dunkel.
+  themeAuto: <><circle cx="12" cy="12" r="8" /><path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" /></>,
   select: <path d="M5 3l6.5 16 2.2-6.3 6.3-2.2Z" />,
   pan: <path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V11m0-1.5a1.5 1.5 0 0 1 3 0V12m0-1a1.5 1.5 0 0 1 3 0v4a5 5 0 0 1-5 5h-1.5a4 4 0 0 1-3-1.4L6 16a1.6 1.6 0 0 1 2.4-2L9 15" />,
   // Gestrichelter Rahmen — dieselbe Form, die der Zug auf dem Canvas malt.

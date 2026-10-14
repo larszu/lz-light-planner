@@ -8,6 +8,7 @@ import { sampleWall, isCurved, wallControl, wallMidHandle, curveControlForMid, d
 import type { ResolvedSun } from '../core/sun';
 import { drawFixtureSymbol } from '../utils/fixtureSymbols';
 import { getBeamColorRgba } from '../core/colorTemp';
+import { canvasFarben } from '../lib/canvasFarben';
 
 interface Props {
   fixtures: PlacedFixture[];
@@ -67,10 +68,6 @@ interface Props {
   onViewChange?: (pixelsPerMeter: number) => void;
 }
 
-const GRID_COLOR = '#2a2a3c';
-const GRID_MAJOR_COLOR = '#3a3a50';
-const RULER_BG = '#1e1e30';
-const RULER_TEXT = '#888';
 const RULER_SIZE = 28;
 
 // Shortest distance from point (px,py) to segment (ax,ay)-(bx,by).
@@ -196,15 +193,16 @@ const PlanCanvas: React.FC<Props> = ({
 
   const drawRulers = useCallback((ctx: CanvasRenderingContext2D, w: number, h: number) => {
     const v = viewRef.current;
-    ctx.fillStyle = RULER_BG;
+    const F = canvasFarben();
+    ctx.fillStyle = F.ruler;
     ctx.fillRect(0, 0, w, RULER_SIZE);
     ctx.fillRect(0, 0, RULER_SIZE, h);
-    ctx.fillStyle = '#15152a';
+    ctx.fillStyle = F.rulerCorner;
     ctx.fillRect(0, 0, RULER_SIZE, RULER_SIZE);
 
     ctx.save();
     ctx.font = '9px monospace';
-    ctx.fillStyle = RULER_TEXT;
+    ctx.fillStyle = F.rulerText;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
@@ -224,7 +222,7 @@ const PlanCanvas: React.FC<Props> = ({
     for (let xm = startX; xm <= right; xm += tickM) {
       const sx = v.offsetX + xm * v.scale;
       if (sx < RULER_SIZE) continue;
-      ctx.strokeStyle = '#444';
+      ctx.strokeStyle = F.tick;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(sx, RULER_SIZE - 6);
@@ -237,7 +235,7 @@ const PlanCanvas: React.FC<Props> = ({
     for (let ym = startY; ym <= bottom; ym += tickM) {
       const sy = v.offsetY + ym * v.scale;
       if (sy < RULER_SIZE) continue;
-      ctx.strokeStyle = '#444';
+      ctx.strokeStyle = F.tick;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(RULER_SIZE - 6, sy);
@@ -250,7 +248,7 @@ const PlanCanvas: React.FC<Props> = ({
       ctx.restore();
     }
 
-    ctx.strokeStyle = '#3a3a50';
+    ctx.strokeStyle = F.edge;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(RULER_SIZE, 0);
@@ -276,8 +274,9 @@ const PlanCanvas: React.FC<Props> = ({
       onViewChange(v.scale);
     }
 
+    const F = canvasFarben();
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = '#1a1a2e';
+    ctx.fillStyle = F.bg;
     ctx.fillRect(0, 0, w, h);
 
     ctx.save();
@@ -299,17 +298,17 @@ const PlanCanvas: React.FC<Props> = ({
     const startY = Math.floor(top / gridStep) * gridStep;
     ctx.lineWidth = 1 / v.scale;
     for (let x = startX; x <= right; x += gridStep) {
-      ctx.strokeStyle = x % 5 === 0 ? GRID_MAJOR_COLOR : GRID_COLOR;
+      ctx.strokeStyle = x % 5 === 0 ? F.gridMajor : F.grid;
       ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
     }
     for (let y = startY; y <= bottom; y += gridStep) {
-      ctx.strokeStyle = y % 5 === 0 ? GRID_MAJOR_COLOR : GRID_COLOR;
+      ctx.strokeStyle = y % 5 === 0 ? F.gridMajor : F.grid;
       ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y); ctx.stroke();
     }
 
     // Axes
     ctx.lineWidth = 2 / v.scale;
-    ctx.strokeStyle = '#555';
+    ctx.strokeStyle = F.axis;
     ctx.beginPath();
     ctx.moveTo(0, top); ctx.lineTo(0, bottom);
     ctx.moveTo(left, 0); ctx.lineTo(right, 0);
@@ -350,14 +349,14 @@ const PlanCanvas: React.FC<Props> = ({
         ctx.closePath();
         ctx.fillStyle = isSelP ? 'rgba(139,69,19,0.40)' : 'rgba(139,69,19,0.22)';
         ctx.fill();
-        ctx.strokeStyle = isSelP ? '#ffcc33' : '#8B4513';
+        ctx.strokeStyle = isSelP ? F.sel : '#8B4513';
         ctx.lineWidth = 2 / v.scale;
         ctx.stroke();
         // vertices when selected
-        if (isSelP) { ctx.fillStyle = '#ffcc33'; for (const p of pts) { ctx.beginPath(); ctx.arc(p.x, p.y, 0.1, 0, Math.PI * 2); ctx.fill(); } }
+        if (isSelP) { ctx.fillStyle = F.sel; for (const p of pts) { ctx.beginPath(); ctx.arc(p.x, p.y, 0.1, 0, Math.PI * 2); ctx.fill(); } }
         const cxp = pts.reduce((s, p) => s + p.x, 0) / pts.length;
         const cyp = pts.reduce((s, p) => s + p.y, 0) / pts.length;
-        ctx.fillStyle = '#ccc';
+        ctx.fillStyle = F.label;
         ctx.font = `${10 / v.scale}px sans-serif`;
         ctx.textAlign = 'center';
         ctx.fillText(`${se.label ? se.label + ' · ' : ''}Bühne h=${se.height}m`, cxp, cyp);
@@ -369,11 +368,11 @@ const PlanCanvas: React.FC<Props> = ({
       ctx.rotate((se.rotation * Math.PI) / 180);
       const isSel = selectedIds.has(se.id);
       ctx.fillStyle = isSel ? 'rgba(139,69,19,0.35)' : 'rgba(139,69,19,0.2)';
-      ctx.strokeStyle = isSel ? '#ffcc33' : '#8B4513';
+      ctx.strokeStyle = isSel ? F.sel : '#8B4513';
       ctx.lineWidth = 2 / v.scale;
       ctx.fillRect(-se.width / 2, -se.depth / 2, se.width, se.depth);
       ctx.strokeRect(-se.width / 2, -se.depth / 2, se.width, se.depth);
-      ctx.fillStyle = '#ccc';
+      ctx.fillStyle = F.label;
       ctx.font = `${10 / v.scale}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.fillText(`${se.width}×${se.depth}m h=${se.height}m`, 0, 4 / v.scale);
@@ -439,8 +438,8 @@ const PlanCanvas: React.FC<Props> = ({
       // Corner resize handles when selected
       if (isSel) {
         const hs = 7 / v.scale;
-        ctx.fillStyle = '#ffcc33';
-        ctx.strokeStyle = '#1a1a2e';
+        ctx.fillStyle = F.sel;
+        ctx.strokeStyle = F.bg;
         ctx.lineWidth = 1 / v.scale;
         for (const [lx, ly] of [[-se.width / 2, -se.depth / 2], [se.width / 2, -se.depth / 2], [se.width / 2, se.depth / 2], [-se.width / 2, se.depth / 2]]) {
           ctx.fillRect(lx - hs / 2, ly - hs / 2, hs, hs);
@@ -462,14 +461,14 @@ const PlanCanvas: React.FC<Props> = ({
       ctx.fillStyle = isSel ? 'rgba(255,204,51,0.06)' : 'rgba(216,212,200,0.05)';
       ctx.fill();
       ctx.setLineDash([8 / v.scale, 5 / v.scale]);
-      ctx.strokeStyle = isSel ? '#ffcc33' : '#7d8aa0';
+      ctx.strokeStyle = isSel ? F.sel : '#7d8aa0';
       ctx.lineWidth = 1.2 / v.scale;
       ctx.stroke();
       ctx.setLineDash([]);
       let lx = 0, ly = 0;
       for (const p of c.points) { lx += p.x; ly += p.y; }
       lx /= c.points.length; ly /= c.points.length;
-      ctx.fillStyle = isSel ? '#ffcc33' : '#8895a8';
+      ctx.fillStyle = isSel ? F.sel : '#8895a8';
       ctx.font = `${11 / v.scale}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.fillText(`⌂ Decke h=${c.height}m · ρ${Math.round(c.reflectance * 100)}%`, lx, ly);
@@ -481,14 +480,14 @@ const PlanCanvas: React.FC<Props> = ({
       const isSel = selectedIds.has(wall.id);
       const curved = isCurved(wall);
       ctx.lineCap = 'round';
-      ctx.strokeStyle = isSel ? '#ffcc33' : wall.color;
+      ctx.strokeStyle = isSel ? F.sel : wall.color;
       ctx.lineWidth = 0.22; // ~0.22 m thick (world units)
       ctx.beginPath();
       ctx.moveTo(wall.x1, wall.y1);
       if (curved) ctx.quadraticCurveTo(wall.cx!, wall.cy!, wall.x2, wall.y2);
       else ctx.lineTo(wall.x2, wall.y2);
       ctx.stroke();
-      if (isSel) { ctx.strokeStyle = '#ffcc33'; ctx.lineWidth = 1.5 / v.scale; ctx.stroke(); }
+      if (isSel) { ctx.strokeStyle = F.sel; ctx.lineWidth = 1.5 / v.scale; ctx.stroke(); }
       ctx.lineCap = 'butt';
       // Window / glass openings drawn as a light glass-tinted strip over the wall.
       const wallWins = normalizedWindows(wall);
@@ -514,7 +513,7 @@ const PlanCanvas: React.FC<Props> = ({
         ctx.arc(hM.x, hM.y, 0.18, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(255,204,51,0.3)';
         ctx.fill();
-        ctx.strokeStyle = '#ffcc33';
+        ctx.strokeStyle = F.sel;
         ctx.lineWidth = 1.5 / v.scale;
         ctx.stroke();
       }
@@ -523,7 +522,7 @@ const PlanCanvas: React.FC<Props> = ({
       for (let i = 0; i < pts.length - 1; i++) wlen += Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
       if (wlen > 0.5) {
         const mid = wallMidHandle(wall);
-        ctx.fillStyle = isSel ? '#ffcc33' : '#b9c2cf';
+        ctx.fillStyle = isSel ? F.sel : '#b9c2cf';
         ctx.font = `${9 / v.scale}px sans-serif`;
         ctx.textAlign = 'center';
         ctx.fillText(`${wall.label ? wall.label + ' · ' : ''}ρ${Math.round(wall.reflectance * 100)}% · ${wall.height}m`, mid.x, mid.y - 0.3);
@@ -544,7 +543,7 @@ const PlanCanvas: React.FC<Props> = ({
       ctx.fillStyle = isSel ? 'rgba(255,204,51,0.12)' : 'rgba(154,164,178,0.10)';
       ctx.fillRect(-len / 2, -halfW, len, halfW * 2);
       // Two chords
-      ctx.strokeStyle = isSel ? '#ffcc33' : '#9aa4b2';
+      ctx.strokeStyle = isSel ? F.sel : '#9aa4b2';
       ctx.lineWidth = 1.5 / v.scale;
       ctx.beginPath();
       ctx.moveTo(-len / 2, -halfW); ctx.lineTo(len / 2, -halfW);
@@ -561,7 +560,7 @@ const PlanCanvas: React.FC<Props> = ({
       ctx.stroke();
       // Label (kept upright)
       if (Math.abs(angle) > Math.PI / 2) ctx.rotate(Math.PI);
-      ctx.fillStyle = isSel ? '#ffcc33' : '#c8d0da';
+      ctx.fillStyle = isSel ? F.sel : '#c8d0da';
       ctx.font = `${11 / v.scale}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.fillText(`${t.label ? t.label + ' · ' : ''}${len.toFixed(1)} m · h=${t.height}m`, 0, -halfW - 5 / v.scale);
@@ -572,7 +571,7 @@ const PlanCanvas: React.FC<Props> = ({
     // Shapes
     if (layers.shapes.visible) for (const shape of shapes) {
       const isSelShape = selectedIds.has(shape.id);
-      ctx.strokeStyle = isSelShape ? '#ffcc33' : (shape.color || '#5599ff');
+      ctx.strokeStyle = isSelShape ? F.sel : (shape.color || '#5599ff');
       ctx.lineWidth = (isSelShape ? 3 : 2) / v.scale;
       ctx.fillStyle = shape.color ? shape.color + '22' : '#5599ff22';
       if (shape.type === 'rect' && shape.points.length === 2) {
@@ -584,7 +583,7 @@ const PlanCanvas: React.FC<Props> = ({
         ctx.strokeRect(rx, ry, rw, rh);
         ctx.setLineDash([]);
         if (shape.label) {
-          ctx.fillStyle = '#ccc';
+          ctx.fillStyle = F.label;
           ctx.font = `${12 / v.scale}px sans-serif`;
           ctx.fillText(shape.label, rx + 4 / v.scale, ry + 14 / v.scale);
         }
@@ -601,7 +600,7 @@ const PlanCanvas: React.FC<Props> = ({
         if (shape.label) {
           const mx = (shape.points[0].x + shape.points[1].x) / 2;
           const my = (shape.points[0].y + shape.points[1].y) / 2;
-          ctx.fillStyle = shape.type === 'measure' ? '#ff9800' : '#ccc';
+          ctx.fillStyle = shape.type === 'measure' ? '#ff9800' : F.label;
           ctx.font = `bold ${13 / v.scale}px sans-serif`;
           ctx.textAlign = 'center';
           ctx.fillText(shape.label, mx, my - 8 / v.scale);
@@ -670,7 +669,7 @@ const PlanCanvas: React.FC<Props> = ({
       ctx.beginPath();
       ctx.moveTo(p.x + Math.cos(fa) * r, p.y + Math.sin(fa) * r);
       ctx.lineTo(p.x + Math.cos(fa) * (r + 0.28), p.y + Math.sin(fa) * (r + 0.28));
-      ctx.strokeStyle = isSel ? '#ffcc33' : '#ff9633';
+      ctx.strokeStyle = isSel ? F.sel : '#ff9633';
       ctx.lineWidth = 2.5 / v.scale;
       ctx.stroke();
       ctx.beginPath();
@@ -678,18 +677,18 @@ const PlanCanvas: React.FC<Props> = ({
       ctx.moveTo(tip.x, tip.y);
       ctx.lineTo(tip.x - Math.cos(fa - 0.5) * 0.13, tip.y - Math.sin(fa - 0.5) * 0.13);
       ctx.lineTo(tip.x - Math.cos(fa + 0.5) * 0.13, tip.y - Math.sin(fa + 0.5) * 0.13);
-      ctx.closePath(); ctx.fillStyle = isSel ? '#ffcc33' : '#ff9633'; ctx.fill();
+      ctx.closePath(); ctx.fillStyle = isSel ? F.sel : '#ff9633'; ctx.fill();
       // Body (a ring; a square hint when sitting)
       ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
       ctx.fillStyle = isSel ? 'rgba(255,150,50,0.6)' : 'rgba(255,150,50,0.3)';
       ctx.fill();
-      ctx.strokeStyle = isSel ? '#ffcc33' : '#ff9633';
+      ctx.strokeStyle = isSel ? F.sel : '#ff9633';
       ctx.lineWidth = 2 / v.scale;
       ctx.stroke();
       ctx.beginPath(); ctx.arc(p.x, p.y, r * 0.4, 0, Math.PI * 2);
-      ctx.fillStyle = isSel ? '#ffcc33' : '#ff9633';
+      ctx.fillStyle = isSel ? F.sel : '#ff9633';
       ctx.fill();
-      ctx.fillStyle = '#eee';
+      ctx.fillStyle = F.labelStrong;
       ctx.font = `${11 / v.scale}px sans-serif`;
       ctx.textAlign = 'center';
       const poseTag = p.pose === 'sitting' ? ' (sitzt)' : '';
@@ -737,11 +736,11 @@ const PlanCanvas: React.FC<Props> = ({
         ctx.beginPath();
         ctx.arc(f.x, f.y, rad + 0.14, 0, Math.PI * 2);
         ctx.setLineDash([3 / v.scale, 3 / v.scale]);
-        ctx.strokeStyle = isSel ? '#ffcc33' : '#6a7280';
+        ctx.strokeStyle = isSel ? F.sel : '#6a7280';
         ctx.lineWidth = 1.5 / v.scale;
         ctx.stroke();
         ctx.setLineDash([]);
-        ctx.fillStyle = isSel ? '#ffcc33' : '#7a8290';
+        ctx.fillStyle = isSel ? F.sel : '#7a8290';
         ctx.font = `${10 / v.scale}px sans-serif`;
         ctx.textAlign = 'center';
         ctx.fillText(`${f.fixture.name} (aus)`, f.x, f.y - rad - 6 / v.scale);
@@ -796,7 +795,7 @@ const PlanCanvas: React.FC<Props> = ({
         ctx.beginPath();
         ctx.setLineDash([4 / v.scale, 4 / v.scale]);
         ctx.moveTo(f.x, f.y); ctx.lineTo(f.aimX, f.aimY);
-        ctx.strokeStyle = isSel ? '#ffcc33' : '#888';
+        ctx.strokeStyle = isSel ? F.sel : F.rulerText;
         ctx.lineWidth = 1 / v.scale; ctx.stroke();
         ctx.setLineDash([]);
 
@@ -807,7 +806,7 @@ const PlanCanvas: React.FC<Props> = ({
           ctx.arc(f.aimX, f.aimY, hr, 0, Math.PI * 2);
           ctx.fillStyle = 'rgba(255,204,51,0.25)';
           ctx.fill();
-          ctx.strokeStyle = '#ffcc33';
+          ctx.strokeStyle = F.sel;
           ctx.lineWidth = 1.5 / v.scale;
           ctx.stroke();
           // Crosshair inside
@@ -815,7 +814,7 @@ const PlanCanvas: React.FC<Props> = ({
           ctx.beginPath();
           ctx.moveTo(f.aimX - cs, f.aimY); ctx.lineTo(f.aimX + cs, f.aimY);
           ctx.moveTo(f.aimX, f.aimY - cs); ctx.lineTo(f.aimX, f.aimY + cs);
-          ctx.strokeStyle = '#ffcc33';
+          ctx.strokeStyle = F.sel;
           ctx.lineWidth = 1.5 / v.scale;
           ctx.stroke();
           // Arrow along aim line pointing to target
@@ -830,7 +829,7 @@ const PlanCanvas: React.FC<Props> = ({
           ctx.lineTo(tipX, tipY);
           ctx.lineTo(tipX - arrLen * Math.cos(arrAngle) + arrW * Math.sin(arrAngle),
                      tipY - arrLen * Math.sin(arrAngle) - arrW * Math.cos(arrAngle));
-          ctx.strokeStyle = '#ffcc33';
+          ctx.strokeStyle = F.sel;
           ctx.lineWidth = 1.5 / v.scale;
           ctx.stroke();
         } else {
@@ -865,11 +864,11 @@ const PlanCanvas: React.FC<Props> = ({
       }
 
       // Labels
-      ctx.fillStyle = '#ddd';
+      ctx.fillStyle = F.label;
       ctx.font = `${10 / v.scale}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.fillText(f.fixture.name, f.x, f.y - rad - 6 / v.scale);
-      ctx.fillStyle = '#999';
+      ctx.fillStyle = F.rulerText;
       ctx.font = `${9 / v.scale}px sans-serif`;
       ctx.fillText(`h=${f.mountingHeight}m`, f.x, f.y + rad + 12 / v.scale);
       // Channel / DMX patch badge
@@ -932,10 +931,10 @@ const PlanCanvas: React.FC<Props> = ({
       ctx.save();
       ctx.translate(cam.x, cam.y);
       ctx.rotate(ang);
-      ctx.fillStyle = isSel ? '#ffcc33' : '#26c6da';
+      ctx.fillStyle = isSel ? F.sel : '#26c6da';
       ctx.beginPath(); ctx.moveTo(0.28, 0); ctx.lineTo(-0.18, 0.18); ctx.lineTo(-0.18, -0.18); ctx.closePath(); ctx.fill();
       ctx.restore();
-      ctx.fillStyle = isSel ? '#ffcc33' : '#9fe7f0';
+      ctx.fillStyle = isSel ? F.sel : '#9fe7f0';
       ctx.font = `${10 / v.scale}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.fillText(`${cam.label || t('canvas.cameraFallback', 'Camera')} · ${cam.fov}°`, cam.x, cam.y - 0.45);
@@ -1015,11 +1014,11 @@ const PlanCanvas: React.FC<Props> = ({
       const x0 = Math.min(d.startWorldX, end.x), y0 = Math.min(d.startWorldY, end.y);
       const w = Math.abs(end.x - d.startWorldX), h = Math.abs(end.y - d.startWorldY);
       ctx.fillStyle = 'rgba(139,69,19,0.25)';
-      ctx.strokeStyle = '#ffcc33';
+      ctx.strokeStyle = F.sel;
       ctx.lineWidth = 1.5 / v.scale;
       ctx.fillRect(x0, y0, w, h);
       ctx.strokeRect(x0, y0, w, h);
-      ctx.fillStyle = '#ffcc33';
+      ctx.fillStyle = F.sel;
       ctx.font = `bold ${11 / v.scale}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.fillText(`${w.toFixed(1)} × ${h.toFixed(1)} m`, x0 + w / 2, y0 + h / 2);
@@ -1034,7 +1033,7 @@ const PlanCanvas: React.FC<Props> = ({
       ctx.moveTo(path[0].x, path[0].y);
       for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
       ctx.lineTo(cur.x, cur.y);
-      ctx.strokeStyle = '#ffcc33';
+      ctx.strokeStyle = F.sel;
       ctx.lineWidth = 1.5 / v.scale;
       ctx.fillStyle = 'rgba(139,69,19,0.18)';
       if (path.length >= 2) { ctx.closePath(); ctx.fill(); }
@@ -1069,7 +1068,7 @@ const PlanCanvas: React.FC<Props> = ({
       let ang = (Math.atan2(cur.y - last.y, cur.x - last.x) * 180) / Math.PI;
       if (ang < 0) ang += 360;
       const mx = (last.x + cur.x) / 2, my = (last.y + cur.y) / 2;
-      ctx.fillStyle = '#ffcc33';
+      ctx.fillStyle = F.sel;
       ctx.font = `bold ${12 / v.scale}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.fillText(`${len.toFixed(2)} m · ${ang.toFixed(0)}°`, mx, my - 10 / v.scale);
@@ -1093,7 +1092,7 @@ const PlanCanvas: React.FC<Props> = ({
     ctx.restore(); ctx.restore();
     drawRulers(ctx, w, h);
 
-    ctx.fillStyle = '#888';
+    ctx.fillStyle = F.rulerText;
     ctx.font = '11px monospace';
     ctx.fillText(`1m = ${v.scale.toFixed(0)}px | Zoom: ${((v.scale / 40) * 100).toFixed(0)}%`, RULER_SIZE + 10, h - 10);
   }, [t, fixtures, shapes, persons, stageElements, trusses, walls, ceilings, floorPlan, layers, cameras, selectedIds, showHeatMap, heatMapScale, heatMapTarget, showFocusNotes, planMode, activeTool, screenToWorld, drawRulers, onViewChange]);

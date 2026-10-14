@@ -7,6 +7,19 @@
 // das die obere Menueleiste gleich aufgebaut ist. Passe an den Cable planner
 // stand an, wenn noetig und vereinheitliche Komponenten."
 //
+// ─── WARUM ES DAS GIBT ────────────────────────────────────────────────────
+//
+// Wer zwischen zwei Werkzeugen der Suite wechselt, sucht die Bedienung an
+// derselben Stelle. Dieser Lauf haelt die STRUKTUR der Kopfzeile fest.
+//
+// 2026-10-13 — ADR-007 (lz-planner-suite) geaendert, Design-Vertrag 2026-10:
+// die Kopflinie (Akzentlinie unter jedem Panel-Kopf) ist entfallen, Panel-
+// Koepfe sind ein normaler Titel in Satzschreibung. Die Zusicherung „traegt
+// eine Kopflinie" ist deshalb ERSETZT durch „traegt den Kopf, aber keine
+// Linie". Neu dazu: der sichtbare Umschalter Auto · Hell · Dunkel steht in
+// der rechten Gruppe, VOR den Einstellungen — die bleiben der letzte Punkt.
+// Struktur, Masse und Reihenfolge sind unveraendert.
+//
 // ─── WOGEGEN DIESER LAUF STEHT ────────────────────────────────────────────
 //
 // Nicht gegen das Bauen — das ist einmal passiert und steht im Diff. Gegen
@@ -187,22 +200,26 @@ assert.ok(
   seitenPanel.includes('writing-mode') || appCss.includes('writing-mode: vertical-rl'),
   'Der Name der Spalte steht eingeklappt nicht senkrecht darin',
 );
-// Die Kopflinie aus ADR-007 traegt jetzt auch das Panel und nicht nur der
-// Dialog. Sie gab es laengst als `.panel-head`; benutzt hat sie nur die
-// Kommandopalette.
-// `includes('panel-head')` genuegt NICHT: die Datei nennt auch
-// `panel-head-titel` und `panel-head-btn`, und die Probe blieb damit gruen,
-// als die Klasse am Kopf-Element schon `kopf` hiess. Gemessen wird deshalb
-// das Attribut selbst.
-// Die Klasse darf NEBEN anderen stehen (seit 2026-09-11 traegt dasselbe
-// Element zusaetzlich `spaltenkopf`, an dem `chrome:parity` die Kopfzeile
-// erkennt). Der Trennzeichen-Rahmen bleibt: `panel-head-titel` faellt weiter
-// durch, weil vor und hinter dem Namen entweder ein Leerzeichen oder das
-// Ende des Attributs stehen muss.
+// Der Panel-Kopf. Gemessen wird das Attribut selbst: `includes('panel-head')`
+// genuegte nicht, weil die Datei auch `panel-head-titel` und
+// `panel-head-btn` nennt. Die Klasse darf neben anderen stehen (`spaltenkopf`
+// erkennt `chrome:parity` in der Suite).
 assert.ok(
   /className="(?:[^"]*\s)?panel-head(?:\s[^"]*)?"/.test(seitenPanel),
-  'Die Seitenleiste traegt keine Kopflinie (.panel-head am Kopf-Element)',
+  'Die Seitenleiste traegt keinen Panel-Kopf (.panel-head am Kopf-Element)',
 );
-assert.ok(appCss.includes('.panel-head {'), 'Die Kopflinie hat keine Regel im Stilblatt');
+assert.ok(appCss.includes('.panel-head {'), 'Der Panel-Kopf hat keine Regel im Stilblatt');
+// Seit 2026-10-13 OHNE Kopflinie (Design-Vertrag 2026-10, ADR-007 geaendert).
+{
+  const kopf = appCss.slice(appCss.indexOf('.panel-head {'), appCss.indexOf('}', appCss.indexOf('.panel-head {')));
+  assert.ok(!/border-bottom/.test(kopf), 'Die Kopflinie ist zurueck — Panel-Koepfe sind ein normaler Titel');
+}
 
-console.log('kopfzeile:check ok — 40 px, kein Hamburger, File/Edit/Tools/View/Help, Einstellungen rechts aussen, Seitenleisten mit 32-px-Leiste und Kopflinie');
+// ── 9. Der Umschalter Auto · Hell · Dunkel steht in der rechten Gruppe ───
+{
+  const schalter = rechtsBlock.indexOf('<ThemaSchalter />');
+  assert.ok(schalter > 0, 'Kein Thema-Umschalter in der rechten Gruppe der Kopfzeile');
+  assert.ok(schalter < knopf, 'Der Thema-Umschalter steht hinter den Einstellungen');
+}
+
+console.log('kopfzeile:check ok — 40 px, kein Hamburger, File/Edit/Tools/View/Help, Einstellungen rechts aussen, Seitenleisten mit 32-px-Leiste und Panel-Kopf ohne Linie, Thema-Umschalter vor den Einstellungen');

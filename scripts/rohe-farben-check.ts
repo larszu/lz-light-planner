@@ -66,6 +66,15 @@
 // nicht. Genau daran ist er auch vorbeigelaufen, als sieben Zustaende
 // weisse Schrift auf die Off-White-Aktionsflaeche schrieben: das waren
 // gueltige Hexwerte an der richtigen Stelle, nur unlesbar.
+// DRITTENS, seit dem 2026-10-13 (Design-Vertrag 2026-10, ADR-007 der
+// lz-planner-suite geaendert): der GRUND des 2D-Plans dreht sich mit dem
+// Thema. Er wird auf ein <canvas> gemalt und sieht keine CSS-Variable; die
+// alte Fassung schrieb `#1a1a2e` (Navy) direkt ins Zeichnen — im Hell-Thema
+// waere das eine dunkle Insel mitten in der Anwendung. Gemessen wird, dass
+// Grund, Lineal und Raster ueber `canvasFarben()` aus den `--canvas-*`-Token
+// kommen, und dass jedes dieser Token in BEIDEN Hell-Saetzen steht.
+// Lichtfarben, Kegel und Leuchten-Symbole misst er ausdruecklich NICHT —
+// die sind Inhalt und drehen sich nicht mit.
 // ───────────────────────────────────────────────────────────────────────────
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -219,6 +228,23 @@ assert.ok(inErlaubt >= 6, `nur ${inErlaubt} erlaubte Stellen erkannt — die Aus
   // Und er darf die mehrzeilige Form nicht kaputtmachen: eine Zeile, die MIT
   // `{` endet, hat vor der Klammer den Selektor und danach nichts.
   assert.equal(selektorVon(['.c {', '  color: #fff;'], 1), '.c');
+}
+
+// 4. Der Plan-Grund kommt aus den Token (siehe Kopf, DRITTENS).
+{
+  const plan = readFileSync(new URL('../src/components/PlanCanvas.tsx', import.meta.url), 'utf8');
+  for (const alt of ['#1a1a2e', '#15152a', '#1e1e30', '#2a2a3c', '#3a3a50']) {
+    assert.ok(!plan.includes(alt), `PlanCanvas.tsx malt wieder mit dem alten Navy-Grund ${alt}`);
+  }
+  assert.ok(plan.includes('canvasFarben()'), 'PlanCanvas.tsx liest seine Grundfarben nicht aus den Token');
+  const hellBlock = css.slice(css.indexOf(":root[data-theme='light'] {"), css.indexOf('}', css.indexOf(":root[data-theme='light'] {")));
+  const sysBlock = css.slice(css.indexOf(":root:not([data-theme='dark']) {"), css.indexOf('}', css.indexOf(":root:not([data-theme='dark']) {")));
+  const namen = [...css.slice(0, css.indexOf(":root[data-theme='light']")).matchAll(/^\s*(--canvas-[a-z-]+):/gm)].map((m) => m[1]);
+  assert.ok(namen.length >= 10, `nur ${namen.length} --canvas-Token gefunden — wurde gelesen?`);
+  for (const n of namen) {
+    assert.ok(hellBlock.includes(`${n}:`), `${n} fehlt im Hell-Block`);
+    assert.ok(sysBlock.includes(`${n}:`), `${n} fehlt im System-Hell-Block`);
+  }
 }
 
 if (zyklen.length > 0) {

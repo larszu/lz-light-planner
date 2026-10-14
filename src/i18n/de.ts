@@ -975,10 +975,10 @@ export const de: Record<string, string> = {
   'settings.theme.darkHint': 'Immer dunkel.',
   'settings.theme.light': 'Hell',
   'settings.theme.lightHint': 'Immer hell.',
-  'settings.theme.system': 'System',
+  'settings.theme.system': 'Auto',
   'settings.theme.systemHint': 'Folgt dem Betriebssystem.',
   'settings.themeHint':
-    'Die Plan-Ansicht und die 3D-Szene bleiben, wie sie sind: ein Lichtplan zeigt eine beleuchtete Bühne, und sie heller zu machen hiesse, anderes Licht zu behaupten.',
+    'Auch oben in der Kopfzeile (Auto · Hell · Dunkel). Der Grund des Plans folgt dem Thema; Lichtfarben, Kegel und Leuchten behalten ihre Farben, und die 3D-Szene bleibt eine beleuchtete Bühne.',
   'settings.title': 'Einstellungen',
   'sidebar.addCustom': '+ Eigene Leuchte anlegen',
   'sidebar.attachments': 'Vorsätze verfügbar',

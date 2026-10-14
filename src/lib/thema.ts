@@ -50,18 +50,33 @@ export const setzeThema = (t: Thema): void => {
   const wurzel = document.documentElement;
   if (t === 'system') wurzel.removeAttribute('data-theme');
   else wurzel.setAttribute('data-theme', t === 'hell' ? 'light' : 'dark');
+  meldeThema();
 };
 
-/** Beim Start einmal anwenden, was gespeichert ist. */
-export const themaAnwenden = (): void => setzeThema(liesThema());
+/**
+ * Das Ereignis, auf das alles hoert, was nicht ueber CSS-Variablen allein
+ * umspringt: der Umschalter in der Kopfzeile (er muss eine Wahl aus dem
+ * Einstellungen-Dialog zeigen) und der 2D-Plan, der auf ein <canvas> malt
+ * und seine Farben nur beim Zeichnen liest.
+ */
+export const THEMA_EREIGNIS = 'lp-thema';
+const meldeThema = (): void => {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(THEMA_EREIGNIS));
+};
+
+/** Beim Start einmal anwenden, was gespeichert ist — und bei Auto dem System
+ *  folgen, wenn es waehrend der Sitzung umschaltet. */
+export const themaAnwenden = (): void => {
+  setzeThema(liesThema());
+  window.matchMedia?.('(prefers-color-scheme: light)').addEventListener?.('change', meldeThema);
+};
 
 /**
  * Ist gerade HELL aktiv?
  *
- * Hier NUR fuer die Oberflaeche gedacht, nicht fuer den Plan: der 2D-Plan
- * und die 3D-Szene drehen sich ausdruecklich NICHT mit (siehe `App.css`) —
- * ein Lichtplan zeigt eine beleuchtete Buehne, und die hell zu machen
- * hiesse, anderes Licht zu behaupten.
+ * Die 3D-Szene dreht sich ausdruecklich NICHT mit — sie zeigt eine
+ * beleuchtete Buehne. Der 2D-Plan dreht nur Grund, Raster und neutrale
+ * Beschriftung (Token `--canvas-*` in `App.css`); Lichtfarben bleiben.
  *
  * Gemessen wird der WIRKLICHE Zustand (`data-theme` plus, wenn keines
  * gesetzt ist, die Systemvorgabe) und nicht die gespeicherte Wahl: bei

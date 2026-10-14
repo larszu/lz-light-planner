@@ -16,7 +16,10 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="LZ Light Planner – 2D-Plan mit Leuchten-Bibliothek und Eigenschaften-Panel" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png" />
+    <img src="docs/screenshot.png" alt="LZ Light Planner – 2D-Plan mit Leuchten-Bibliothek und Eigenschaften-Panel" />
+  </picture>
 </p>
 
 ---
@@ -132,6 +135,19 @@ It is **not** a replacement for Vectorworks, or Capture. It's the tool you reach
 - Every list you can export as CSV is also available as a typeset PDF (searchable text, not a photo of a table)
 
 ---
+
+### 🌓 Interface: light and dark
+
+- Light and dark theme, switchable in the header: **Auto · Light · Dark**
+  (Auto follows the operating system; the choice is remembered). The same
+  switch is in *Settings*.
+- Neutral surfaces (warm off-white / anthracite), the brand blue only as an
+  accent; rounded cards, pill buttons, glass header, Public Sans shipped
+  locally. Values follow the Lars Zumpe Medienproduktion design contract
+  2026-10 (ADR-007 in the planner suite) and are checked by `brand:check`.
+- The plan background, grid and rulers follow the theme. Light colours,
+  beams and fixture symbols keep their colours, and the 3D scene stays a lit
+  stage in both themes.
 
 ## 🚀 Getting started
 

@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Icon from './Icon';
+import Signet from './Signet';
+import ThemaSchalter from './ThemaSchalter';
 import type { FloorMaterial, SunSettings } from '../types';
 import { buildMenus } from './menuModel';
 import TopMenu from './TopMenu';
@@ -138,10 +140,10 @@ const TopBar: React.FC<Props> = (p) => {
     <header className="topbar" ref={ref}>
       {/* ── left: brand + menu ── */}
       <div className="topbar-left">
-        {/* Signet ohne Tally-Punkt: der Speichern-Knopf traegt schon das eine Rot der Kopfzeile. */}
+        {/* Signet mit Tally-Punkt in Kit-Farben (`--logo`); der Speichern-Knopf
+            traegt seit dem Design-Vertrag 2026-10 keinen Punkt mehr. */}
         <div className="brand-logo" aria-hidden="true">
-          <img className="lzm-auf-dunkel" src={`${import.meta.env.BASE_URL}brand/lzm_signet_offwhite.svg`} alt="" draggable={false} />
-          <img className="lzm-auf-hell" src={`${import.meta.env.BASE_URL}brand/lzm_signet_navy.svg`} alt="" draggable={false} />
+          <Signet />
         </div>
         <b className="brand-name">{APP_NAME}</b>
         <span className="brand-proj">{p.projectName || t('top.untitled', 'Untitled')}</span>
@@ -249,6 +251,8 @@ const TopBar: React.FC<Props> = (p) => {
             man mehrmals je Sitzung braucht. */}
         <button className="tb-btn primary" onClick={p.onSave}
           title={t('top.save', 'Save')} aria-label={t('top.save', 'Save')}><Icon name="save" size={15} />{t('top.save', 'Save')}</button>
+
+        <ThemaSchalter />
 
         {/* RECHTS AUSSEN, als LETZTER Bedienpunkt der Zeile — dieselbe Stelle
             wie im Cable Planner. Nicht zu verwechseln mit dem Zahnrad daneben:

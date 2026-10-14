@@ -46,9 +46,9 @@ const SettingsDialog: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
   /* Drei Zustaende, weil „System" keine Umschreibung fuer „dunkel" ist. */
   const THEMEN: { id: Thema; label: string; hint: string }[] = [
-    { id: 'system', label: t('settings.theme.system', 'System'), hint: t('settings.theme.systemHint', 'Follows the operating system.') },
-    { id: 'dunkel', label: t('settings.theme.dark', 'Dark'), hint: t('settings.theme.darkHint', 'Always dark.') },
+    { id: 'system', label: t('settings.theme.system', 'Auto'), hint: t('settings.theme.systemHint', 'Follows the operating system.') },
     { id: 'hell', label: t('settings.theme.light', 'Light'), hint: t('settings.theme.lightHint', 'Always light.') },
+    { id: 'dunkel', label: t('settings.theme.dark', 'Dark'), hint: t('settings.theme.darkHint', 'Always dark.') },
   ];
 
   useEffect(() => {
@@ -97,7 +97,7 @@ const SettingsDialog: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         <p className="settings-hint">
           {t(
             'settings.themeHint',
-            'The plan view and the 3D scene stay as they are: a light plot shows a lit stage, and making it lighter would claim different light.',
+            'Also in the header (Auto · Light · Dark). The plan background follows the theme; light colours, beams and fixtures keep their colours, and the 3D scene stays a lit stage.',
           )}
         </p>
         <div className="settings-chips">
