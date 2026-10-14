@@ -49,7 +49,7 @@ function posedMinY(o: THREE.Object3D): number {
 }
 
 (async () => {
-  const buf = await xhrBuf(`${import.meta.env.BASE_URL}models/person.glb`);
+  const buf = await xhrBuf('/dev-assets/person.glb');
   const g = await new GLTFLoader().parseAsync(buf, '');
   model = g.scene;
   model.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { const mats = Array.isArray(m.material) ? m.material : [m.material]; mats.forEach((mm) => { const s = mm as THREE.MeshStandardMaterial; if (s.emissive) s.emissiveIntensity = 0; }); } });

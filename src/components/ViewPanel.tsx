@@ -4,6 +4,7 @@ import type { FloorMaterial, FloorPresetId, SunSettings } from '../types';
 import { BACKDROPS, FLOOR_PRESETS, type BackdropId } from '../core/surfaceTextures';
 import { useTranslation } from '../i18n';
 import SunSection from './SunSection';
+import { PERSON_SCAN_AVAILABLE } from '../core/personLook';
 
 // Die Anzeige- und Render-Einstellungen rechts in der Kopfzeile.
 //
@@ -155,9 +156,9 @@ const ViewPanel: React.FC<Props> = (p) => {
         <Slider label={t('top.ambience', 'Ambience')} value={p.ambience} min={0} max={1.5} step={0.05} def={0.55} shown={`${Math.round(p.ambience * 100)}%`} onChange={p.onAmbienceChange} resetHint={resetHint} />
         <Slider label={t('top.haze', 'Haze')} value={p.haze} min={0} max={1} step={0.02} def={0.15} shown={`${Math.round(p.haze * 100)}%`} onChange={p.onHazeChange} resetHint={resetHint} />
         <Toggle on={p.showBeams} icon="beam" label={t('vp.beams', 'Light beams in haze')} onClick={p.onToggleBeams} />
-        <Toggle on={p.personScan} icon="person" label={t('vp.personScan', 'Scanned person model')}
+        {PERSON_SCAN_AVAILABLE && <Toggle on={p.personScan} icon="person" label={t('vp.personScan', 'Scanned person model')}
           hint={t('vp.personScanHint', 'Render people from the photo-scanned model instead of the built figures with pose and clothing.')}
-          onClick={p.onTogglePersonScan} />
+          onClick={p.onTogglePersonScan} />}
       </section>
 
       <section className="vp-sec">

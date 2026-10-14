@@ -6,7 +6,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { erzeugeDunstStrahl, erzeugeMensch, erzeugeSitze, istSitzend, kelvinZuFarbe, ladePersonModell, tiefsterPunkt, wendeSitzposeAn, Himmel } from '../avplan/scene3d';
+import { erzeugeDunstStrahl, erzeugeMensch, erzeugeSitze, istSitzend, kelvinZuFarbe, ladePersonModell, tiefsterPunkt, wendeSitzposeAn, Himmel, SZENEN_ZEIT } from '../avplan/scene3d';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { PlacedFixture, Person, StageElement, Truss, Wall, Ceiling, FloorPlan, Layers, CameraView, FloorMaterial, SunSettings } from '../types';
 import { computeHeatMap, surfaceLux, sunSurfaceLux, luxToColor, luxToColorTarget, effectiveFieldAngleDeg, peakCandela } from '../core/lightCalc';
@@ -15,7 +15,7 @@ import { sampleWall, isCurved, pointInPolygon, wallSegments, normalizedWindows, 
 import { floorPreset, wallPreset, surfaceCanvas, DEFAULT_FLOOR, backdrop as backdropOf, TECH_BACKDROP, type Backdrop, type BackdropId, type SurfacePreset } from '../core/surfaceTextures';
 import { sunInstant, type ResolvedSun } from '../core/sun';
 import { EXPOSURE_DEFAULT, LIGHT_K, LUX_PER_UNIT, renderDaylight, renderedDaylightLux } from '../core/daylightRender';
-import { figureOf, postureOf } from '../core/personLook';
+import { PERSON_SCAN_AVAILABLE, figureOf, postureOf } from '../core/personLook';
 import { useTranslation } from '../i18n';
 
 // ── Hintergrund-Kuppel ──────────────────────────────────────────────────────
@@ -61,6 +61,9 @@ function applyBackdrop(dome: THREE.Mesh, scene: THREE.Scene, b: Backdrop) {
 // stehen auch die Gruende (XHR fuer file://, Texturlader fuer Electron,
 // Ruhepose statt T-Pose, kein eingebackenes Leuchten).
 interface PersonModel { scene: THREE.Group; height: number; minY: number }
+
+// Idle motion of the built people; still when the system asks for reduced motion.
+const IDLE_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1;
 
 function loadPersonModel(): Promise<PersonModel> {
   // Die mitgelieferte Figur traegt ein Scherz-Accessoire (Rentier-Brille mit
@@ -150,7 +153,8 @@ interface Props {
   onHoverLux?: (lux: number | null) => void;
 }
 
-const Scene3D = forwardRef<Scene3DHandle, Props>(({ fixtures, persons, stageElements, trusses, walls, ceilings, floorPlan, layers, cameras, selectedIds, showHeatMap, heatMapScale, heatMapTarget, photoMode, exposure, haze, showBeams, ambience, floor, sun, onSelect, onHoverLux, backdrop = 'venue', personScan = false, sunSettings }, ref) => {
+const Scene3D = forwardRef<Scene3DHandle, Props>(({ fixtures, persons, stageElements, trusses, walls, ceilings, floorPlan, layers, cameras, selectedIds, showHeatMap, heatMapScale, heatMapTarget, photoMode, exposure, haze, showBeams, ambience, floor, sun, onSelect, onHoverLux, backdrop = 'venue', personScan: personScanPref = false, sunSettings }, ref) => {
+  const personScan = personScanPref && PERSON_SCAN_AVAILABLE;
   const containerRef = useRef<HTMLDivElement>(null);
   const { t } = useTranslation();
   // Warum die Ansicht leer ist — falls sie leer ist. Siehe die Begruendung am
@@ -379,8 +383,12 @@ const Scene3D = forwardRef<Scene3DHandle, Props>(({ fixtures, persons, stageElem
       }
     };
 
+    // The view renders every frame anyway, so the scene clock costs nothing
+    // extra; it drives breathing of the built people and the drifting haze.
+    const sceneStart = performance.now();
     const animate = () => {
       sceneRef.current!.animId = requestAnimationFrame(animate);
+      SZENEN_ZEIT.value = (performance.now() - sceneStart) / 1000;
       applyWASD();
       controls.update();
       dome.position.copy(camera.position);
@@ -1175,7 +1183,7 @@ const Scene3D = forwardRef<Scene3DHandle, Props>(({ fixtures, persons, stageElem
       if (photoMode && !personScan) {
         const posture = postureOf(p);
         const { farben, gestalt } = figureOf(p);
-        const m = erzeugeMensch(posture, farben, p.height, gestalt);
+        const m = erzeugeMensch(posture, farben, p.height, { ...gestalt, ruhe: IDLE_MOTION });
         const sitzt = istSitzend(posture);
         m.rotation.y = ((90 - (p.facing ?? 270)) * Math.PI) / 180;
         // Die Sitzflaeche liegt in der Geometrie schon bei 0,45 m und waechst nicht mit.
