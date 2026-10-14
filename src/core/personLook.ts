@@ -8,6 +8,13 @@ export const SKIN_TONES = ['#f1d1b8', '#e6bc9c', '#d4a283', '#bf8a68', '#a06d4e'
 export const HAIR_COLOURS = ['#0f0d0c', '#3a2a1e', '#8a6a48', '#b89b70', '#8f8a84', '#d0ccc4'] as const;
 export const HAIR_LENGTHS = [0, 0.04, 0.12, 0.3] as const;
 
+// No scan with a clear licence is available: the former public/models/person.glb
+// came from a repository without any licence (scan of a real person), so it
+// moved to dev-assets/ (dev server only, not in Pages or the app) and the
+// option is hidden. To bring it back, ship a licensed GLB as
+// public/models/person.glb and set this to true.
+export const PERSON_SCAN_AVAILABLE = false;
+
 export function postureOf(p: Pick<Person, 'pose' | 'posture'>): Pose {
   return p.posture ?? (p.pose === 'sitting' ? 'sitzen' : 'stehen');
 }
@@ -37,6 +44,7 @@ export function figureOf(p: Person): { farben: MenschFarben; gestalt: MenschGest
       schuhe: l.shoes,
       geschlecht: l.feminine,
       haarLaenge: l.hairLength,
+      phase: seed(p.id),
     },
   };
 }

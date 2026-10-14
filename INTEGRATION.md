@@ -138,8 +138,8 @@ host ever mounted the planner's components directly.
   edits through it. The `LightingDocument` shape already defines the slice.
 - **Three.js dedupe.** Pin one `three` version shared with Cable-Planner's
   react-three-fiber (avoid two `three` instances). `Scene3D` can stay raw three
-  or be ported to r3f later. Bundle `public/models/person.glb` + the pdf worker
-  via the host's asset pipeline.
+  or be ported to r3f later. Bundle the pdf worker via the host's asset pipeline
+  (no person scan ships, see `PERSON_SCAN_AVAILABLE`).
 - **Properties/Library/Selection** into the host's dispatcher: fixture editor as
   a section in `EquipmentProperties`, fixture library into the LibraryPanel
   drag-drop flow, selection into `uiStore`/`selectionLifecycle`.
